@@ -1,0 +1,21 @@
+# Build results
+bin/
+obj/
+*.exe
+*.dll
+*.pdb
+
+# User-specific files
+*.user
+*.suo
+.vs/
+
+# Packages
+packages/
+
+# Logs
+*.log
+
+# Local configuration files
+appsettings.local.json
+*.local.json

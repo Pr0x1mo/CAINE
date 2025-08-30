@@ -1,0 +1,326 @@
+﻿<Window x:Class="CAINE.AnalyticsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="CAINE Analytics Dashboard" 
+        Height="800" 
+        Width="1400" 
+        MinHeight="600"
+        MinWidth="1000"
+        WindowStartupLocation="CenterScreen"
+        Background="#1e1e1e">
+
+    <Window.Resources>
+        <!-- Modern color scheme matching MainWindow -->
+        <SolidColorBrush x:Key="PrimaryBrush" Color="#0078d4"/>
+        <SolidColorBrush x:Key="SecondaryBrush" Color="#106ebe"/>
+        <SolidColorBrush x:Key="AccentBrush" Color="#005a9e"/>
+        <SolidColorBrush x:Key="BackgroundBrush" Color="#1e1e1e"/>
+        <SolidColorBrush x:Key="SurfaceBrush" Color="#2d2d30"/>
+        <SolidColorBrush x:Key="TextBrush" Color="#ffffff"/>
+        <SolidColorBrush x:Key="MutedTextBrush" Color="#cccccc"/>
+        <SolidColorBrush x:Key="BorderBrush" Color="#3e3e42"/>
+        <SolidColorBrush x:Key="SuccessBrush" Color="#107c10"/>
+        <SolidColorBrush x:Key="WarningBrush" Color="#ff8c00"/>
+        <SolidColorBrush x:Key="ErrorBrush" Color="#d13438"/>
+
+        <!-- Modern button style -->
+        <Style TargetType="Button">
+            <Setter Property="Background" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Padding" Value="12,6"/>
+            <Setter Property="FontSize" Value="13"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border Background="{TemplateBinding Background}"
+                                CornerRadius="4"
+                                Padding="{TemplateBinding Padding}">
+                            <ContentPresenter HorizontalAlignment="Center" 
+                                            VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter Property="Background" Value="{StaticResource SecondaryBrush}"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter Property="Background" Value="{StaticResource AccentBrush}"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Card style for metrics -->
+        <Style x:Key="MetricCard" TargetType="Border">
+            <Setter Property="Background" Value="{StaticResource SurfaceBrush}"/>
+            <Setter Property="BorderBrush" Value="{StaticResource BorderBrush}"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="16"/>
+            <Setter Property="Margin" Value="8"/>
+        </Style>
+
+        <!-- Header text style -->
+        <Style x:Key="HeaderText" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="Margin" Value="0,0,0,8"/>
+        </Style>
+
+        <!-- Metric number style -->
+        <Style x:Key="MetricNumber" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="32"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="{StaticResource PrimaryBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Metric label style -->
+        <Style x:Key="MetricLabel" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Foreground" Value="{StaticResource MutedTextBrush}"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="TextAlignment" Value="Center"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <!-- Header -->
+            <RowDefinition Height="Auto"/>
+            <!-- Top metrics row -->
+            <RowDefinition Height="Auto"/>
+            <!-- Middle metrics row -->
+            <RowDefinition Height="*"/>
+            <!-- Content area -->
+            <RowDefinition Height="Auto"/>
+            <!-- Refresh button -->
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,24">
+            <TextBlock Text="CAINE Analytics Dashboard"
+                      Style="{StaticResource HeaderText}"/>
+
+            <TextBlock x:Name="LastUpdated"
+                      Text="Last updated: Loading..."
+                      FontSize="12"
+                      Foreground="{StaticResource MutedTextBrush}"
+                      VerticalAlignment="Bottom"
+                      Margin="16,0,0,8"/>
+
+            <TextBlock x:Name="SystemHealthIndicator"
+                      Text="System Status: Checking..."
+                      FontSize="14"
+                      FontWeight="SemiBold"
+                      VerticalAlignment="Bottom"
+                      Margin="24,0,0,8"/>
+        </StackPanel>
+
+        <!-- Top Metrics Row -->
+        <Grid Grid.Row="1" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Total Solutions -->
+            <Border Grid.Column="0" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="TotalSolutionsText"
+                              Text="0"
+                              Style="{StaticResource MetricNumber}"/>
+                    <TextBlock Text="Total Solutions"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Success Rate -->
+            <Border Grid.Column="1" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="SuccessRateText"
+                              Text="0%"
+                              Style="{StaticResource MetricNumber}"/>
+                    <TextBlock Text="Average Success Rate"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Total Feedback -->
+            <Border Grid.Column="2" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="TotalFeedbackText"
+                              Text="0"
+                              Style="{StaticResource MetricNumber}"/>
+                    <TextBlock Text="User Feedback Entries"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Active Users -->
+            <Border Grid.Column="3" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="ActiveUsersText"
+                              Text="0"
+                              Style="{StaticResource MetricNumber}"/>
+                    <TextBlock Text="Active Users (24h)"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Middle Metrics Row -->
+        <Grid Grid.Row="2" Margin="0,0,0,16">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Security Events -->
+            <Border Grid.Column="0" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="SecurityEventsText"
+                              Text="0"
+                              Style="{StaticResource MetricNumber}"/>
+                    <TextBlock Text="Security Events (24h)"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Top Error Category -->
+            <Border Grid.Column="1" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="TopErrorCategoryText"
+                              Text="Loading..."
+                              FontSize="18"
+                              FontWeight="Bold"
+                              Foreground="{StaticResource PrimaryBrush}"
+                              HorizontalAlignment="Center"
+                              TextAlignment="Center"
+                              TextWrapping="Wrap"/>
+                    <TextBlock Text="Most Common Error Type"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+
+            <!-- Conflicts Detected -->
+            <Border Grid.Column="2" Style="{StaticResource MetricCard}">
+                <StackPanel>
+                    <TextBlock x:Name="ConflictsText"
+                              Text="0"
+                              Style="{StaticResource MetricNumber}"/>
+                    <TextBlock Text="Solution Conflicts"
+                              Style="{StaticResource MetricLabel}"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Content Area -->
+        <ScrollViewer Grid.Row="3" VerticalScrollBarVisibility="Auto">
+            <StackPanel>
+                <!-- Recent Activity -->
+                <Border Style="{StaticResource MetricCard}" Margin="8,8,8,16">
+                    <StackPanel>
+                        <TextBlock Text="Recent Activity"
+                                  FontSize="18"
+                                  FontWeight="Bold"
+                                  Foreground="{StaticResource TextBrush}"
+                                  Margin="0,0,0,12"/>
+
+                        <TextBox x:Name="RecentActivityText"
+                                Background="{StaticResource BackgroundBrush}"
+                                Foreground="{StaticResource TextBrush}"
+                                BorderBrush="{StaticResource BorderBrush}"
+                                MinHeight="120"
+                                IsReadOnly="True"
+                                TextWrapping="Wrap"
+                                VerticalScrollBarVisibility="Auto"
+                                FontFamily="Consolas, Courier New"
+                                FontSize="12"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- System Performance -->
+                <Border Style="{StaticResource MetricCard}" Margin="8,0,8,16">
+                    <StackPanel>
+                        <TextBlock Text="System Performance"
+                                  FontSize="18"
+                                  FontWeight="Bold"
+                                  Foreground="{StaticResource TextBrush}"
+                                  Margin="0,0,0,12"/>
+
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="Search Strategy Effectiveness"
+                                          FontSize="14"
+                                          FontWeight="SemiBold"
+                                          Foreground="{StaticResource TextBrush}"
+                                          Margin="0,0,0,8"/>
+
+                                <TextBox x:Name="SearchStrategyText"
+                                        Background="{StaticResource BackgroundBrush}"
+                                        Foreground="{StaticResource TextBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        MinHeight="100"
+                                        IsReadOnly="True"
+                                        TextWrapping="Wrap"
+                                        FontFamily="Consolas, Courier New"
+                                        FontSize="11"/>
+                            </StackPanel>
+
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Solution Quality Distribution"
+                                          FontSize="14"
+                                          FontWeight="SemiBold"
+                                          Foreground="{StaticResource TextBrush}"
+                                          Margin="0,0,0,8"/>
+
+                                <TextBox x:Name="QualityDistributionText"
+                                        Background="{StaticResource BackgroundBrush}"
+                                        Foreground="{StaticResource TextBrush}"
+                                        BorderBrush="{StaticResource BorderBrush}"
+                                        MinHeight="100"
+                                        IsReadOnly="True"
+                                        TextWrapping="Wrap"
+                                        FontFamily="Consolas, Courier New"
+                                        FontSize="11"/>
+                            </StackPanel>
+                        </Grid>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Refresh Button -->
+        <StackPanel Grid.Row="4" 
+                   Orientation="Horizontal" 
+                   HorizontalAlignment="Center" 
+                   Margin="0,16,0,0">
+            <Button x:Name="RefreshButton"
+                   Content="Refresh Analytics"
+                   Width="160"
+                   Click="RefreshButton_Click"/>
+
+            <Button x:Name="CloseButton"
+                   Content="Close"
+                   Width="100"
+                   Margin="12,0,0,0"
+                   Click="CloseButton_Click"/>
+        </StackPanel>
+    </Grid>
+</Window>

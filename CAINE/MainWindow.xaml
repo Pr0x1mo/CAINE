@@ -195,27 +195,33 @@
 
             <!-- Action Buttons -->
             <StackPanel Grid.Row="2"
-                       Orientation="Horizontal"
-                       HorizontalAlignment="Center"
-                       Margin="0,0,0,24">
+           Orientation="Horizontal"
+           HorizontalAlignment="Center"
+           Margin="0,0,0,24">
 
                 <Button x:Name="BtnSearch" 
-                       Content="🔍 Analyze Error"
-                       Width="140"
-                       Margin="0,0,12,0"
-                       Click="BtnSearch_Click"/>
+           Content="🔍 Analyze Error"
+           Width="140"
+           Margin="0,0,12,0"
+           Click="BtnSearch_Click"/>
 
                 <Button x:Name="BtnTeach"  
-                       Content="📚 Teach CAINE"
-                       Width="140"
-                       Margin="0,0,12,0"
-                       Click="BtnTeach_Click"/>
+           Content="📚 Teach CAINE"
+           Width="140"
+           Margin="0,0,12,0"
+           Click="BtnTeach_Click"/>
 
                 <Button x:Name="BtnCaineApi"
-                       Content="🚀 Use CAINE API"
-                       Width="160"
-                       IsEnabled="False"
-                       Click="BtnCaineApi_Click"/>
+           Content="🚀 Use CAINE API"
+           Width="160"
+           Margin="0,0,12,0"
+           IsEnabled="False"
+           Click="BtnCaineApi_Click"/>
+
+                <Button x:Name="BtnAnalytics"
+           Content="📊 View Analytics"
+           Width="140"
+           Click="BtnAnalytics_Click"/>
             </StackPanel>
 
             <!-- Results Section -->

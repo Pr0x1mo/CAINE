@@ -1,0 +1,238 @@
+﻿<Window x:Class="CAINE.SolutionTreeWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        Title="CAINE Interactive Troubleshooting" 
+        Height="600" Width="900"
+        Background="#2b2b2b">
+
+    <Window.Resources>
+        <!-- Dark theme styles -->
+        <Style x:Key="DarkButton" TargetType="Button">
+            <Setter Property="Background" Value="#3c3c3c"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#555"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="10,5"/>
+            <Setter Property="Margin" Value="5"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Style.Triggers>
+                <Trigger Property="IsMouseOver" Value="True">
+                    <Setter Property="Background" Value="#4a4a4a"/>
+                </Trigger>
+                <Trigger Property="IsPressed" Value="True">
+                    <Setter Property="Background" Value="#2a2a2a"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
+    </Window.Resources>
+
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <Border Grid.Row="0" Background="#1e1e1e" Padding="10">
+            <StackPanel>
+                <TextBlock Text="Interactive Troubleshooting Assistant" 
+                          FontSize="20" FontWeight="Bold" Foreground="#00adef"/>
+                <TextBlock Text="Follow the decision tree to resolve your error" 
+                          FontSize="12" Foreground="#888" Margin="0,5,0,0"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Main Content Area -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- Interactive Question Panel -->
+            <Border Grid.Column="0" Margin="10" Background="#333" CornerRadius="5">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- Current Question -->
+                    <StackPanel Grid.Row="0" Margin="20">
+                        <TextBlock Text="Current Question:" Foreground="#00adef" FontWeight="Bold"/>
+                        <TextBlock Name="CurrentQuestion" 
+                                  Text="Loading question..." 
+                                  FontSize="16" 
+                                  Foreground="White" 
+                                  TextWrapping="Wrap" 
+                                  Margin="0,10,0,0"/>
+                    </StackPanel>
+
+                    <!-- Action/Solution Display -->
+                    <ScrollViewer Grid.Row="1" Margin="20,0" VerticalScrollBarVisibility="Auto">
+                        <StackPanel>
+                            <TextBlock Text="Recommended Action:" 
+                                      Foreground="#888" 
+                                      FontWeight="Bold" 
+                                      Visibility="Collapsed" 
+                                      Name="ActionLabel"/>
+                            <TextBlock Name="SuggestedAction" 
+                                      Foreground="#90EE90" 
+                                      TextWrapping="Wrap" 
+                                      Margin="0,5,0,0"/>
+
+                            <!-- Solution Display (for leaf nodes) -->
+                            <Border Name="SolutionPanel" 
+                                   Visibility="Collapsed" 
+                                   Background="#2a2a2a" 
+                                   CornerRadius="3" 
+                                   Padding="10" 
+                                   Margin="0,10,0,0">
+                                <StackPanel>
+                                    <TextBlock Text="📋 Solution:" 
+                                              Foreground="#00adef" 
+                                              FontWeight="Bold" 
+                                              Margin="0,0,0,10"/>
+                                    <TextBlock Name="SolutionText" 
+                                              Foreground="White" 
+                                              TextWrapping="Wrap"/>
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </ScrollViewer>
+
+                    <!-- Decision Buttons -->
+                    <StackPanel Grid.Row="2" 
+                               Orientation="Horizontal" 
+                               HorizontalAlignment="Center" 
+                               Margin="20">
+                        <Button Name="BtnYes" 
+                               Content="✓ Yes" 
+                               Width="120" 
+                               Height="40"
+                               Style="{StaticResource DarkButton}"
+                               Background="#2d5a2d"
+                               Click="BtnYes_Click"/>
+                        <Button Name="BtnNo" 
+                               Content="✗ No" 
+                               Width="120" 
+                               Height="40"
+                               Style="{StaticResource DarkButton}"
+                               Background="#5a2d2d"
+                               Click="BtnNo_Click"/>
+                        <Button Name="BtnBack" 
+                               Content="← Back" 
+                               Width="120" 
+                               Height="40"
+                               Style="{StaticResource DarkButton}"
+                               Click="BtnBack_Click"
+                               IsEnabled="False"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- Tree Visualization Panel -->
+            <Border Grid.Column="1" Margin="10" Background="#333" CornerRadius="5">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                    </Grid.RowDefinitions>
+
+                    <TextBlock Text="Decision Path:" 
+                              Foreground="#00adef" 
+                              FontWeight="Bold" 
+                              Margin="10"/>
+
+                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                        <TreeView Name="PathTreeView" 
+                                 Background="Transparent" 
+                                 BorderThickness="0" 
+                                 Margin="10">
+                            <TreeView.ItemTemplate>
+                                <HierarchicalDataTemplate ItemsSource="{Binding Children}">
+                                    <StackPanel Orientation="Horizontal">
+                                        <TextBlock Text="{Binding Icon}" Margin="0,0,5,0"/>
+                                        <TextBlock Text="{Binding Question}" 
+                                                  Foreground="White"/>
+                                        <TextBlock Text="{Binding SuccessRateText}" 
+                                                  Foreground="#888" 
+                                                  Margin="5,0,0,0"/>
+                                    </StackPanel>
+                                </HierarchicalDataTemplate>
+                            </TreeView.ItemTemplate>
+                        </TreeView>
+                    </ScrollViewer>
+                </Grid>
+            </Border>
+        </Grid>
+
+        <!-- Progress Bar -->
+        <Border Grid.Row="2" Background="#1e1e1e" Padding="10">
+            <Grid>
+                <ProgressBar Name="ProgressBar" 
+                            Height="20" 
+                            Background="#2b2b2b" 
+                            Foreground="#00adef" 
+                            BorderBrush="#555"/>
+                <TextBlock Name="ProgressText" 
+                          HorizontalAlignment="Center" 
+                          VerticalAlignment="Center" 
+                          Foreground="White" 
+                          FontSize="12"/>
+            </Grid>
+        </Border>
+
+        <!-- Bottom Actions -->
+        <Border Grid.Row="3" Background="#1e1e1e" Padding="10">
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*"/>
+                    <ColumnDefinition Width="Auto"/>
+                </Grid.ColumnDefinitions>
+
+                <!-- Feedback Panel -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal">
+                    <TextBlock Text="Was this solution helpful?" 
+                              Foreground="White" 
+                              VerticalAlignment="Center" 
+                              Margin="0,0,10,0"
+                              Name="FeedbackLabel"
+                              Visibility="Collapsed"/>
+                    <Button Name="BtnFeedbackYes" 
+                           Content="👍 Yes" 
+                           Style="{StaticResource DarkButton}"
+                           Visibility="Collapsed"
+                           Click="BtnFeedbackYes_Click"/>
+                    <Button Name="BtnFeedbackNo" 
+                           Content="👎 No" 
+                           Style="{StaticResource DarkButton}"
+                           Visibility="Collapsed"
+                           Click="BtnFeedbackNo_Click"/>
+                </StackPanel>
+
+                <!-- Action Buttons -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal">
+                    <Button Name="BtnRestart" 
+                           Content="🔄 Restart" 
+                           Style="{StaticResource DarkButton}"
+                           Click="BtnRestart_Click"/>
+                    <Button Name="BtnShowFullTree" 
+                           Content="🌳 Show Full Tree" 
+                           Style="{StaticResource DarkButton}"
+                           Click="BtnShowFullTree_Click"/>
+                    <Button Name="BtnClose" 
+                           Content="Close" 
+                           Style="{StaticResource DarkButton}"
+                           Click="BtnClose_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

@@ -1563,8 +1563,29 @@ namespace CAINE
         /// Simple helper methods to turn the thumbs up/down buttons on and off
         /// Prevents users from rating the same solution multiple times
         /// </summary>
+        /// 
+        /// <summary>
+        /// Launch interactive troubleshooting tree
+        /// </summary>
+        private void BtnInteractiveTree_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(currentSolutionHash))
+            {
+                MessageBox.Show("Please search for an error first to use interactive troubleshooting.",
+                    "No Error Selected", MessageBoxButton.OK, MessageBoxImage.Information);
+                return;
+            }
+
+            var treeWindow = new SolutionTreeWindow(currentSolutionHash, ErrorInput.Text);
+            treeWindow.ShowDialog(); // Use ShowDialog to make it modal
+        }
+
+        // Also modify your BtnSearch_Click to enable the tree button when results found:
+        // Add this line after "EnableFeedbackButtons();"
+       
         private void EnableFeedbackButtons()
         {
+            BtnInteractiveTree.IsEnabled = true;
             BtnFeedbackYes.IsEnabled = true;
             BtnFeedbackNo.IsEnabled = true;
         }

@@ -218,12 +218,18 @@
            IsEnabled="False"
            Click="BtnCaineApi_Click"/>
 
+                <Button x:Name="BtnInteractiveTree" 
+           Content="🌳 Interactive"
+           Width="120"
+           Margin="0,0,12,0"
+           IsEnabled="False"
+           Click="BtnInteractiveTree_Click"/>
+
                 <Button x:Name="BtnAnalytics"
            Content="📊 View Analytics"
            Width="140"
            Click="BtnAnalytics_Click"/>
             </StackPanel>
-
             <!-- Results Section -->
             <GroupBox Grid.Row="3" 
                      Header="🎯 Analysis Results"

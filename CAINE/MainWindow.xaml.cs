@@ -14,6 +14,7 @@ using System.Windows;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using CAINE.Security;
+using CAINE.MachineLearning;
 
 namespace CAINE
 {
@@ -26,6 +27,33 @@ namespace CAINE
     /// - If no solution exists, it asks ChatGPT for help and learns from the answer
     /// - Users can rate solutions as helpful or not, making the system smarter over time
     /// - Essentially creates a company knowledge base that gets better with each use
+    /// 
+    /// ============================================================================
+    /// CAINE SYSTEM ARCHITECTURE - How Everything Works Together
+    /// 
+    /// THE BIG PICTURE:
+    /// • Knowledge Base: Stores all error solutions like a library catalog
+    /// • Search Engine: Finds relevant solutions using 4 different search methods
+    /// • AI Integration: Asks ChatGPT when CAINE doesn't know the answer
+    /// • Learning System: Gets smarter from user feedback over time
+    /// 
+    /// USER JOURNEY:
+    /// [Error Input] → [Search Database] → Found? → [Show Solution + Confidence]
+    ///                          ↓                            ↓
+    ///                      Not Found?                [User Feedback]
+    ///                          ↓                            ↓
+    ///                   [Ask ChatGPT]              [Update Confidence]
+    ///                          ↓
+    ///                  [Show AI Solution]
+    ///                          ↓
+    ///                    [User Can Teach]
+    /// 
+    /// SUCCESS METRICS - How We Know CAINE Is Working:
+    /// • Solutions with >80% success rate from user feedback
+    /// • Reduced time to resolve errors (tracked in resolution_time_minutes)
+    /// • Growing knowledge base with version control
+    /// • Continuous learning from both successes and failures
+    /// ============================================================================
     /// </summary>
     public partial class MainWindow : Window
     {
@@ -101,14 +129,23 @@ namespace CAINE
         /// - Creates the database tables if they don't exist (like setting up filing cabinets)
         /// - Prepares CAINE to start helping with errors
         /// </summary>
+
         public MainWindow()
         {
             InitializeComponent();
             EnsureTls12();                                     // Set up secure connections to ChatGPT
             SecurityValidator.InitializeSecurityTables();     // Set up security monitoring
-            InitializeEnhancedTables();                       // Create the knowledge base tables
+            InitializeEnhancedTables();
+
+            // Use Loaded event for async initialization
+            this.Loaded += async (sender, e) => await MainWindow_LoadedAsync();
         }
 
+        private async Task MainWindow_LoadedAsync()
+        {
+            // Initialize ML components after window loads
+            await InitializeMLComponentsAsync();
+        }
         /// <summary>
         /// DATABASE SETUP - Creates all the tables CAINE needs to store knowledge
         /// 
@@ -353,6 +390,19 @@ namespace CAINE
                     }
                 }
 
+                // SEARCH LAYER 5: ENHANCED ML PREDICTION (Advanced Machine Learning)
+                // Use clustering, decision trees, and neural networks for prediction
+                if (result == null)
+                {
+                    System.Diagnostics.Debug.WriteLine("No pattern match, trying ML prediction...");
+                    result = await EnhancedMLSearchAsync(cleanErrorInput, hash);
+                    if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
+                    {
+                        searchResults.Add(result);
+                        System.Diagnostics.Debug.WriteLine($"ML prediction found with confidence: {result.Confidence}");
+                    }
+                }
+
                 // STEP 6: DISPLAY BEST RESULT IF FOUND
                 if (searchResults.Count > 0)
                 {
@@ -391,7 +441,7 @@ namespace CAINE
             }
             finally
             {
-                // STEP 10: RE-ENABLE BUTTONS
+                // STEP 8: RE-ENABLE BUTTONS
                 // Always re-enable buttons when done, even if there was an error
                 BtnSearch.IsEnabled = true;
                 BtnTeach.IsEnabled = true;
@@ -2110,6 +2160,423 @@ namespace CAINE
             double dot = 0;
             for (int i = 0; i < n; i++) dot += a[i] * b[i];
             return dot;
+        }
+    }
+    /// <summary>
+    /// ML INTEGRATION FOR CAINE - Connects traditional ML to existing system
+    /// 
+    /// WHAT THIS DOES:
+    /// - Bridges the ML engine with CAINE's existing search and feedback systems
+    /// - Enhances decision-making with predictive models
+    /// - Provides intelligent error categorization and trend analysis
+    /// </summary>
+    public partial class MainWindow
+    {
+        private CaineMLEngine mlEngine;
+        private SimpleNeuralNetwork neuralNetwork;
+        private DateTime lastModelTraining = DateTime.MinValue;
+        private const int RetrainIntervalHours = 24;
+
+        /// <summary>
+        /// INITIALIZE ML COMPONENTS - Set up machine learning on startup
+        /// </summary>
+        private async Task InitializeMLComponentsAsync()
+        {
+            try
+            {
+                // Load historical data for training
+                var trainingData = await LoadTrainingDataAsync();
+
+                if (trainingData.Count >= 50) // Need minimum data for ML
+                {
+                    // Initialize ML engine
+                    mlEngine = new CaineMLEngine();
+                    await mlEngine.InitializeAsync(trainingData);
+
+                    // Initialize neural network
+                    int featureCount = ExtractFeatures(ErrorInput.Text).Length;
+                    neuralNetwork = new SimpleNeuralNetwork(
+                        inputSize: featureCount,
+                        hiddenSize: 50,
+                        outputSize: 3 // Success, Partial Success, Failure
+                    );
+
+                    // Train neural network
+                    await TrainNeuralNetworkAsync(trainingData);
+
+                    System.Diagnostics.Debug.WriteLine("ML components initialized successfully");
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine($"Insufficient training data: {trainingData.Count} samples");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ML initialization failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// ENHANCED SEARCH WITH ML - Augments existing search with ML predictions
+        /// </summary>
+        private async Task<SolutionResult> EnhancedMLSearchAsync(string cleanErrorInput, string hash)
+        {
+            if (mlEngine == null) return null;
+
+            try
+            {
+                // Extract features from the error
+                var features = ExtractFeatures(cleanErrorInput);
+
+                // Check if this is an anomaly
+                bool isAnomaly = await mlEngine.IsAnomalyAsync(features);
+                if (isAnomaly)
+                {
+                    System.Diagnostics.Debug.WriteLine("Anomalous error detected - needs special attention");
+                    // Could trigger special handling or alert
+                }
+
+                // Get cluster-based recommendation
+                var (template, clusterConfidence) = await mlEngine.GetClusterRecommendationAsync(features);
+
+                // Predict solution success
+                var (willWork, solutionConfidence) = await mlEngine.PredictSolutionSuccessAsync(features);
+
+                // Use neural network for additional prediction
+                var neuralPrediction = await PredictWithNeuralNetworkAsync(features);
+
+                // Combine predictions for final confidence
+                double combinedConfidence = CombinePredictions(
+                    clusterConfidence,
+                    solutionConfidence,
+                    neuralPrediction.Confidence
+                );
+
+                if (!string.IsNullOrEmpty(template) && combinedConfidence > 0.5)
+                {
+                    return new SolutionResult
+                    {
+                        Steps = template,
+                        Hash = hash,
+                        Source = "ml_prediction",
+                        Confidence = combinedConfidence,
+                        SuccessRate = willWork ? combinedConfidence : 1 - combinedConfidence,
+                        FeedbackCount = 0, // ML prediction, no feedback yet
+                        HasConflicts = false,
+                        Version = "ML-1.0"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ML search failed: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// EXTRACT FEATURES - Convert error text to numerical features for ML
+        /// </summary>
+        private double[] ExtractFeatures(string errorText)
+        {
+            var features = new List<double>();
+
+            // Text length features
+            features.Add(errorText.Length);
+            features.Add(errorText.Split(' ').Length); // Word count
+            features.Add(errorText.Split('\n').Length); // Line count
+
+            // Keyword presence (binary features)
+            string[] importantKeywords = {
+                "connection", "timeout", "permission", "denied", "failed",
+                "database", "network", "authentication", "invalid", "null"
+            };
+
+            foreach (var keyword in importantKeywords)
+            {
+                features.Add(errorText.ToLower().Contains(keyword) ? 1.0 : 0.0);
+            }
+
+            // Error code extraction (if present)
+            var errorCode = ExtractErrorCode(errorText);
+            features.Add(errorCode);
+
+            // Time-based features
+            features.Add(DateTime.Now.Hour); // Hour of day
+            features.Add((int)DateTime.Now.DayOfWeek); // Day of week
+
+            // Complexity metrics
+            features.Add(CalculateTextComplexity(errorText));
+            features.Add(CountSpecialCharacters(errorText));
+
+            return features.ToArray();
+        }
+
+        /// <summary>
+        /// LOAD TRAINING DATA - Retrieve historical data from database
+        /// </summary>
+        private async Task<List<CaineMLEngine.TrainingDataPoint>> LoadTrainingDataAsync()
+        {
+            return await Task.Run(() =>
+            {
+                var trainingData = new List<CaineMLEngine.TrainingDataPoint>();
+
+                try
+                {
+                    using (var conn = OpenConn())
+                    {
+                        // Load error history with feedback
+                        var sql = $@"
+                            SELECT 
+                                kb.error_text,
+                                kb.error_hash,
+                                kb.error_signature,
+                                fb.was_helpful,
+                                fb.created_at,
+                                COALESCE(fb.resolution_time_minutes, 30) as response_time
+                            FROM {TableKB} kb
+                            JOIN {TableFeedback} fb ON kb.error_hash = fb.solution_hash
+                            WHERE fb.was_helpful IS NOT NULL
+                            ORDER BY fb.created_at DESC
+                            LIMIT 1000";
+
+                        using (var cmd = new OdbcCommand(sql, conn))
+                        using (var rdr = cmd.ExecuteReader())
+                        {
+                            while (rdr.Read())
+                            {
+                                var errorText = rdr.GetString(0);
+                                var errorHash = rdr.GetString(1);
+                                var errorSignature = rdr.GetString(2);
+                                var wasHelpful = rdr.GetBoolean(3);
+                                var timestamp = rdr.GetDateTime(4);
+                                var responseTime = rdr.GetDouble(5);
+
+                                // Extract features and create training point
+                                var features = ExtractFeatures(errorText);
+
+                                trainingData.Add(new CaineMLEngine.TrainingDataPoint
+                                {
+                                    Features = features,
+                                    ErrorHash = errorHash,
+                                    SolutionWorked = wasHelpful,
+                                    ResponseTime = responseTime,
+                                    ErrorCategory = CategorizeError(errorSignature),
+                                    Timestamp = timestamp
+                                });
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Loading training data failed: {ex.Message}");
+                }
+
+                return trainingData;
+            });
+        }
+
+        /// <summary>
+        /// TRAIN NEURAL NETWORK - Train the deep learning model
+        /// </summary>
+        private async Task TrainNeuralNetworkAsync(List<CaineMLEngine.TrainingDataPoint> trainingData)
+        {
+            await Task.Run(() =>
+            {
+                // Prepare training data
+                var inputs = trainingData.Select(d => d.Features).ToArray();
+                var targets = trainingData.Select(d => new double[]
+                {
+                    d.SolutionWorked ? 1.0 : 0.0,           // Success
+                    d.ResponseTime < 30 ? 1.0 : 0.0,        // Quick resolution
+                    d.ResponseTime > 60 ? 1.0 : 0.0         // Complex problem
+                }).ToArray();
+
+                // Train the network
+                neuralNetwork.Train(inputs, targets, epochs: 500);
+            });
+        }
+
+        /// <summary>
+        /// PREDICT WITH NEURAL NETWORK - Get predictions from deep learning model
+        /// </summary>
+        private async Task<(double Confidence, string Category)> PredictWithNeuralNetworkAsync(double[] features)
+        {
+            return await Task.Run(() =>
+            {
+                if (neuralNetwork == null)
+                    return (0.5, "unknown");
+
+                var output = neuralNetwork.Forward(features);
+
+                // Interpret outputs
+                double successProbability = output[0];
+                double quickResolutionProb = output[1];
+                double complexProblemProb = output[2];
+
+                string category = complexProblemProb > 0.7 ? "complex" :
+                                 quickResolutionProb > 0.7 ? "simple" : "moderate";
+
+                return (successProbability, category);
+            });
+        }
+
+        /// <summary>
+        /// AUTO-RETRAIN MODELS - Periodically update ML models with new data
+        /// </summary>
+        private async Task CheckAndRetrainModelsAsync()
+        {
+            if (mlEngine == null) return;
+
+            var hoursSinceLastTraining = (DateTime.Now - lastModelTraining).TotalHours;
+            if (hoursSinceLastTraining < RetrainIntervalHours) return;
+
+            try
+            {
+                // Load recent data
+                var recentData = await LoadTrainingDataAsync();
+
+                // Retrain if we have enough new data
+                if (recentData.Count >= 100)
+                {
+                    await mlEngine.RetrainModelsAsync(recentData);
+                    await TrainNeuralNetworkAsync(recentData);
+                    lastModelTraining = DateTime.Now;
+
+                    System.Diagnostics.Debug.WriteLine("Models retrained successfully");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Model retraining failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// PREDICT ERROR TRENDS - Forecast future error occurrences
+        /// </summary>
+        private async Task<string> GetErrorTrendAnalysisAsync(string errorPattern)
+        {
+            if (mlEngine == null) return "ML not initialized";
+
+            var (predictedCount, confidence) = await mlEngine.PredictErrorTrendAsync(errorPattern, 1);
+
+            if (confidence > 0.7)
+            {
+                return $"📊 Trend Analysis: This error is predicted to occur ~{predictedCount:F0} times " +
+                       $"in the next hour (Confidence: {confidence:P0}). ";
+            }
+
+            return "";
+        }
+
+        /// <summary>
+        /// ENHANCED FEEDBACK WITH ML - Update ML models when users provide feedback
+        /// </summary>
+        private async Task RecordMLFeedbackAsync(bool wasHelpful, string errorHash)
+        {
+            // Record standard feedback first
+            RecordEnhancedFeedback(wasHelpful);
+
+            // Update ML models with this feedback
+            if (mlEngine != null)
+            {
+                // Check if it's time to retrain
+                await CheckAndRetrainModelsAsync();
+            }
+        }
+
+        // ============================================================================
+        // HELPER METHODS FOR ML INTEGRATION
+        // ============================================================================
+
+        private double CombinePredictions(params double[] confidences)
+        {
+            // Weighted average with decay for missing predictions
+            double sum = 0;
+            int count = 0;
+
+            foreach (var conf in confidences)
+            {
+                if (conf > 0)
+                {
+                    sum += conf;
+                    count++;
+                }
+            }
+
+            return count > 0 ? sum / count : 0.5;
+        }
+
+        private string CategorizeError(string errorSignature)
+        {
+            // Simple categorization based on keywords
+            if (errorSignature.Contains("connection") || errorSignature.Contains("network"))
+                return "network";
+            if (errorSignature.Contains("permission") || errorSignature.Contains("denied"))
+                return "security";
+            if (errorSignature.Contains("null") || errorSignature.Contains("reference"))
+                return "nullref";
+            if (errorSignature.Contains("timeout"))
+                return "performance";
+
+            return "general";
+        }
+
+        private int ExtractErrorCode(string errorText)
+        {
+            // Extract numeric error codes if present
+            var match = System.Text.RegularExpressions.Regex.Match(errorText, @"(?:error|code)[\s:]*(\d+)",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (match.Success && int.TryParse(match.Groups[1].Value, out int code))
+            {
+                return code;
+            }
+
+            return 0;
+        }
+
+        private double CalculateTextComplexity(string text)
+        {
+            // Simple text complexity metric
+            var sentences = text.Split(new[] { '.', '!', '?' }, StringSplitOptions.RemoveEmptyEntries);
+            var words = text.Split(' ');
+
+            if (sentences.Length == 0) return 0;
+
+            double avgWordsPerSentence = (double)words.Length / sentences.Length;
+            double avgWordLength = words.Average(w => w.Length);
+
+            // Flesch Reading Ease approximation
+            return Math.Min(100, 206.835 - 1.015 * avgWordsPerSentence - 84.6 * (avgWordLength / 10));
+        }
+
+        private int CountSpecialCharacters(string text)
+        {
+            return text.Count(c => !char.IsLetterOrDigit(c) && !char.IsWhiteSpace(c));
+        }
+
+        /// <summary>
+        /// ML DASHBOARD - Show ML insights and predictions
+        /// </summary>
+        private void ShowMLDashboard()
+        {
+            if (mlEngine == null)
+            {
+                ResultBox.Text += "\n\n⚠️ ML components not initialized. Need more training data.";
+                return;
+            }
+
+            // This would open a new window showing:
+            // - Error clusters visualization
+            // - Trend predictions
+            // - Model accuracy metrics
+            // - Feature importance rankings
+            // - Anomaly detection alerts
         }
     }
 }

@@ -1,12 +1,14 @@
-﻿using System;
+﻿using CAINE.Controls;
+using CAINE.MachineLearning;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Media;
-using CAINE.MachineLearning;
 
 namespace CAINE
 {
@@ -367,9 +369,30 @@ namespace CAINE
         /// </summary>
         private void BtnShowFullTree_Click(object sender, RoutedEventArgs e)
         {
-            // This would open a separate window with full tree visualization
-            MessageBox.Show("Full tree visualization coming in next version!", "Feature Preview",
-                MessageBoxButton.OK, MessageBoxImage.Information);
+            // Create a new window to show the full tree
+            var treeWindow = new Window
+            {
+                Title = "Decision Tree Visualization",
+                Width = 800,
+                Height = 600,
+                WindowStartupLocation = WindowStartupLocation.CenterOwner,
+                Owner = this
+            };
+
+            // Create the tree visualization control
+            var treeVisual = new TreeVisualizationControl();
+            treeVisual.RenderTree(rootNode);
+
+            // Add scroll viewer for large trees
+            var scrollViewer = new ScrollViewer
+            {
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                Content = treeVisual
+            };
+
+            treeWindow.Content = scrollViewer;
+            treeWindow.ShowDialog();
         }
 
         /// <summary>

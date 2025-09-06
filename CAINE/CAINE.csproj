@@ -120,6 +120,7 @@
     <Compile Include="FuzzySearchEngine.cs" />
     <Compile Include="InteractiveSolutionTree.cs" />
     <Compile Include="Security\SecurityValidator.cs" />
+    <Compile Include="SolutionParser.cs" />
     <Compile Include="SolutionTreeWindow.xaml.cs">
       <DependentUpon>SolutionTreeWindow.xaml</DependentUpon>
     </Compile>
@@ -190,14 +191,13 @@
   </Target>
   <Import Project="..\packages\SkiaSharp.NativeAssets.macOS.2.88.6\build\net462\SkiaSharp.NativeAssets.macOS.targets" Condition="Exists('..\packages\SkiaSharp.NativeAssets.macOS.2.88.6\build\net462\SkiaSharp.NativeAssets.macOS.targets')" />
   <Import Project="..\packages\SkiaSharp.NativeAssets.Win32.2.88.6\build\net462\SkiaSharp.NativeAssets.Win32.targets" Condition="Exists('..\packages\SkiaSharp.NativeAssets.Win32.2.88.6\build\net462\SkiaSharp.NativeAssets.Win32.targets')" />
-	<PropertyGroup>
-		<PlatformTarget>x64</PlatformTarget>
-		<Prefer32Bit>false</Prefer32Bit>
-	</PropertyGroup>
-
-	<ItemGroup>
-		<None Include="$(NuGetPackageRoot)libtorch-cpu\2.0.1\runtimes\win-x64\native\*.dll">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-	</ItemGroup>
+  <PropertyGroup>
+    <PlatformTarget>x64</PlatformTarget>
+    <Prefer32Bit>false</Prefer32Bit>
+  </PropertyGroup>
+  <ItemGroup>
+    <None Include="$(NuGetPackageRoot)libtorch-cpu\2.5.1\runtimes\win-x64\native\*.dll">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>

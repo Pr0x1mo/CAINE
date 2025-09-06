@@ -25,7 +25,7 @@ namespace CAINE
         private string errorText;
         private Stack<InteractiveSolutionTree.DecisionNode> navigationHistory;
         private ObservableCollection<TreeNodeViewModel> treeViewItems;
-
+        private int totalSteps = 0; // Add this at the top with other fields
         /// <summary>
         /// View model for tree visualization
         /// </summary>
@@ -37,7 +37,7 @@ namespace CAINE
             private ObservableCollection<TreeNodeViewModel> _children;
             private bool _isExpanded;
             private bool _isSelected;
-
+            
             public string Icon
             {
                 get => _icon;
@@ -113,12 +113,15 @@ namespace CAINE
                 currentNode = rootNode;
                 currentPath = new InteractiveSolutionTree.TreePath { ErrorHash = errorHash };
 
+                // Count total steps BEFORE displaying
+                totalSteps = CountTotalSteps(rootNode);
+
                 // Display first question
                 DisplayCurrentNode();
                 UpdateTreeVisualization();
 
                 ProgressBar.IsIndeterminate = false;
-                UpdateProgress(0);
+                UpdateProgress(0); // This now knows totalSteps
             }
             catch (Exception ex)
             {
@@ -134,6 +137,13 @@ namespace CAINE
         {
             if (currentNode == null) return;
 
+            // Count total steps if we're at the root
+            if (navigationHistory.Count == 0 && rootNode != null)
+            {
+                totalSteps = CountTotalSteps(rootNode);
+            }
+
+            // ADD THIS - the actual display logic:
             CurrentQuestion.Text = currentNode.Question;
 
             if (currentNode.IsLeaf)
@@ -166,6 +176,28 @@ namespace CAINE
 
             // Update back button
             BtnBack.IsEnabled = navigationHistory.Count > 0;
+        }
+
+        private int CountTotalSteps(InteractiveSolutionTree.DecisionNode node)
+        {
+            if (node == null) return 0;
+            if (node.IsLeaf) return 0; // Leaf nodes aren't steps
+
+            // Check if this is a step node (contains "Step X:")
+            if (node.Question != null && node.Question.Contains("Step ") && node.Question.Contains(":"))
+            {
+                // This is an actual step, count it and continue
+                return 1 + CountTotalSteps(node.YesChild);
+            }
+
+            // For non-step nodes, just continue counting without adding
+            int maxSteps = 0;
+            if (node.YesChild != null)
+                maxSteps = Math.Max(maxSteps, CountTotalSteps(node.YesChild));
+            if (node.NoChild != null)
+                maxSteps = Math.Max(maxSteps, CountTotalSteps(node.NoChild));
+
+            return maxSteps;
         }
 
         /// <summary>
@@ -310,8 +342,11 @@ namespace CAINE
         /// </summary>
         private void UpdateProgress(double value)
         {
-            ProgressBar.Value = Math.Min(100, value * 100);
-            ProgressText.Text = $"Step {currentPath.NodesVisited.Count} of estimated 5";
+            int currentStep = currentPath.NodesVisited.Count;
+            double percentage = totalSteps > 0 ? (currentStep * 100.0 / totalSteps) : 0;
+
+            ProgressBar.Value = Math.Min(100, percentage);
+            ProgressText.Text = $"Step {currentStep} of {totalSteps}";
         }
 
         /// <summary>

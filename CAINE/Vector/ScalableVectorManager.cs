@@ -17,7 +17,7 @@ namespace CAINE.Vector
         private const string TableVectorCache = "default.cai_vector_cache";
         private const string TableSecurityLog = "default.cai_security_log";
         private const string DsnName = "CAINE_Databricks";
-
+        private const int VectorCandidateLimit = 300;  // Max number of similar errors to compare against
         // Performance optimization parameters
         private const int VectorDimensions = 3072; // text-embedding-3-large dimensions
         private const int IndexPageSize = 1000;
@@ -232,7 +232,7 @@ namespace CAINE.Vector
             private async Task<List<VectorMatch>> HierarchicalVectorSearch(float[] queryVector, int limit, double minSimilarity)
             {
                 // LEVEL 1: Fast approximate search using vector index
-                var candidates = await GetIndexCandidates(queryVector, limit * 5); // Get 5x candidates
+                var candidates = await GetIndexCandidates(queryVector, Math.Min(VectorCandidateLimit, limit * 5));
 
                 if (candidates.Count == 0) return new List<VectorMatch>();
 

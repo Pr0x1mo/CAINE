@@ -117,6 +117,62 @@ namespace CAINE.MachineLearning
         //        return root;
         //    });
         //}
+        private DecisionNode BuildStepByStepTree(string solution, double successRate)
+        {
+            var steps = SolutionParser.ParseIntoSteps(solution);
+
+            if (steps.Count == 1)
+            {
+                // Single step - simple tree
+                return new DecisionNode
+                {
+                    Question = "Apply this solution?",
+                    IsLeaf = true,
+                    Solution = steps[0],
+                    SuccessRate = successRate
+                };
+            }
+
+            // Multi-step - create interactive tree
+            DecisionNode root = new DecisionNode
+            {
+                Question = $"This solution has {steps.Count} steps. Ready to begin?",
+                SuccessRate = successRate
+            };
+
+            DecisionNode current = root;
+            for (int i = 0; i < steps.Count; i++)
+            {
+                var stepNode = new DecisionNode
+                {
+                    Question = $"Step {i + 1}: {steps[i]}\n\nDid this work?",
+                    SuccessRate = successRate
+                };
+
+                current.YesChild = stepNode;
+
+                if (i == steps.Count - 1)
+                {
+                    // Last step
+                    stepNode.YesChild = CreateLeafNode("Solution complete! Please rate if it worked.");
+                    stepNode.NoChild = CreateLeafNode("Try alternative approach or use CAINE API");
+                }
+                else
+                {
+                    // More steps to come
+                    stepNode.NoChild = new DecisionNode
+                    {
+                        Question = "Step failed. Try alternative approach?",
+                        YesChild = CreateLeafNode("Return to main window for alternatives"),
+                        NoChild = CreateLeafNode($"Continue with step {i + 2}")
+                    };
+                }
+
+                current = stepNode;
+            }
+
+            return root;
+        }
         private async Task<DecisionNode> GenerateTreeFromPatternsAsync(string errorHash, string errorText)
         {
             return await Task.Run(() =>
@@ -128,8 +184,6 @@ namespace CAINE.MachineLearning
                     using (var conn = new OdbcConnection(connectionString))
                     {
                         conn.Open();
-
-                        // Try to get REAL solution from your database
                         var sql = $@"
                     SELECT kb.resolution_steps, 
                            COALESCE(fb.success_rate, 0.5) as success_rate
@@ -148,35 +202,14 @@ namespace CAINE.MachineLearning
                         {
                             if (rdr.Read())
                             {
-                                // Found real solution in database!
                                 var steps = rdr.GetString(0);
                                 var successRate = rdr.GetDouble(1);
 
-                                // Parse the steps into a simple tree
-                                root = new DecisionNode
-                                {
-                                    Question = "Found solution in database. Ready to apply?",
-                                    ActionIfYes = "Apply the solution below",
-                                    ActionIfNo = "Try alternative approach",
-                                    ErrorCategory = CategorizeError(errorText),
-                                    SuccessRate = successRate
-                                };
-
-                                // Parse steps if they're array format: ["step1", "step2"]
+                                // Parse the steps
                                 var stepsText = ConvertArrayToString(steps);
 
-                                // Create solution node
-                                root.YesChild = CreateLeafNode(stepsText);
-                                root.YesChild.SuccessRate = successRate;
-
-                                // Alternative path
-                                root.NoChild = new DecisionNode
-                                {
-                                    Question = "Would you like to try the CAINE API for an alternative solution?",
-                                    ActionIfYes = "Use CAINE API",
-                                    ActionIfNo = "Return to main window",
-                                    ErrorCategory = root.ErrorCategory
-                                };
+                                // USE THE NEW METHOD HERE!
+                                root = BuildStepByStepTree(stepsText, successRate);
 
                                 return root;
                             }
@@ -188,16 +221,17 @@ namespace CAINE.MachineLearning
                     System.Diagnostics.Debug.WriteLine($"Database query failed: {ex.Message}");
                 }
 
-                // If no database match, return the hardcoded tree
+                // If no database match, fallback to basic tree
                 root = new DecisionNode
                 {
-                    Question = "Is this error occurring during connection/network operations?",
-                    ActionIfYes = "Proceed to network troubleshooting",
-                    ActionIfNo = "Check for authentication or permission issues",
-                    ErrorCategory = "root"
+                    Question = "No solution found in database. Try CAINE API?",
+                    ActionIfYes = "Return to main window and use API",
+                    ActionIfNo = "Submit this as new error for analysis",
+                    IsLeaf = false
                 };
 
-                // ... rest of your existing hardcoded tree ...
+                root.YesChild = CreateLeafNode("Close this window and click 'Use CAINE API' button");
+                root.NoChild = CreateLeafNode("This error has been logged for future analysis");
 
                 return root;
             });

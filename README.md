@@ -41,10 +41,10 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 ```
 ┌─────────────────────────────────────┐
 │     User Interface (WPF)            │
-│  ┌──────────┬──────────┬─────────┐ │
-│  │ Search   │Analytics │ Tree    │ │
-│  │ Engine   │Dashboard │ Visual  │ │
-│  └──────────┴──────────┴─────────┘ │
+│  ┌──────────┬──────────┬─────────┐  │
+│  │ Search   │Analytics │ Tree    │  │
+│  │ Engine   │Dashboard │ Visual  │  │
+│  └──────────┴──────────┴─────────┘  │
 └──────────────┬──────────────────────┘
                ↓
 ┌──────────────────────────────────────┐
@@ -54,15 +54,15 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 │  3. Keyword Search (tokenized)       │
 │  4. Vector Similarity (embeddings)   │
 │  5. ML Prediction (SVM/Trees)        │
-└──────────────┬──────────────────────┘
+└──────────────┬───────────────────────┘
                ↓
-┌──────────────────────────────────────┐
-│     Data Layer                       │
+┌─────────────────────────────────────┐
+│     Data Layer                      │
 │  ┌─────────────┬─────────────┐      │
-│  │ Databricks  │   OpenAI    │      │
-│  │ SQL Warehouse│   API       │      │
+│  │ Databricks  │    OpenAI   │      │
+│  │SQL Warehouse│    API      │      │
 │  └─────────────┴─────────────┘      │
-└──────────────────────────────────────┘
+└─────────────────────────────────────┘
 ```
 
 ## Key Features

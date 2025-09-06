@@ -313,7 +313,7 @@ namespace CAINE
 
                 // STEP 2: PREPARE THE UI
                 // Disable buttons to prevent double-clicking while searching
-                BtnCaineApi.IsEnabled = false;
+                BtnCaineApi.IsEnabled = true;
                 BtnSearch.IsEnabled = false;
                 BtnTeach.IsEnabled = false;
                 BtnFeedbackYes.IsEnabled = false;
@@ -478,7 +478,7 @@ namespace CAINE
             try
             {
                 // STEP 1: DISABLE BUTTONS AND SHOW PROGRESS
-                BtnCaineApi.IsEnabled = false;
+                BtnCaineApi.IsEnabled = true;
                 BtnFeedbackYes.IsEnabled = false;
                 BtnFeedbackNo.IsEnabled = false;
                 ResultBox.Text = "Consulting CAINE AI (OpenAI) with enhanced context...";

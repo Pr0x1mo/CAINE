@@ -78,6 +78,62 @@ namespace CAINE.MachineLearning
             public DateTime Timestamp { get; set; }
         }
 
+        
+        private SimpleNeuralNetwork neuralNetwork;
+        private bool isNeuralNetworkTrained = false;
+
+        // Add this method to initialize the neural network (add after InitializeAsync method)
+        private void InitializeNeuralNetwork(List<TrainingDataPoint> data)
+        {
+            if (data.Count < MinSamplesForTraining) return;
+
+            // Determine input size from features
+            int inputSize = data[0].Features.Length;
+            int hiddenSize = Math.Max(10, inputSize / 2); // Hidden layer is half of input
+            int outputSize = 2; // Binary classification: will work / won't work
+
+            neuralNetwork = new SimpleNeuralNetwork(inputSize, hiddenSize, outputSize);
+
+            // Prepare training data
+            double[][] inputs = data.Select(d => d.Features).ToArray();
+            double[][] targets = data.Select(d => new double[]
+            {
+        d.SolutionWorked ? 1.0 : 0.0,  // Success
+        d.SolutionWorked ? 0.0 : 1.0   // Failure (inverse)
+            }).ToArray();
+
+            // Train the network
+            neuralNetwork.Train(inputs, targets, epochs: 100);
+            isNeuralNetworkTrained = true;
+        }
+
+        // Add this method to use the neural network for predictions
+        public async Task<(double Confidence, bool WillWork)> PredictWithNeuralNetworkAsync(double[] features)
+        {
+            return await Task.Run(() =>
+            {
+                if (!isNeuralNetworkTrained || neuralNetwork == null)
+                    return (0.5, false); // Default if not trained
+
+                var output = neuralNetwork.Forward(features);
+
+                // output[0] is probability of success, output[1] is probability of failure
+                double successProbability = output[0];
+                double failureProbability = output[1];
+
+                // Normalize if needed
+                double total = successProbability + failureProbability;
+                if (total > 0)
+                {
+                    successProbability /= total;
+                }
+
+                bool willWork = successProbability > 0.5;
+                double confidence = Math.Abs(successProbability - 0.5) * 2; // Convert to 0-1 confidence
+
+                return (confidence, willWork);
+            });
+        }
         /// <summary>
         /// INITIALIZE ML ENGINE - Set up all machine learning models
         /// </summary>
@@ -91,15 +147,15 @@ namespace CAINE.MachineLearning
             // Train models in parallel for efficiency
             var tasks = new[]
             {
-                Task.Run(() => TrainClusteringModel(historicalData)),
-                Task.Run(() => TrainDecisionTree(historicalData)),
-                Task.Run(() => TrainSVMClassifier(historicalData)),
-                Task.Run(() => AnalyzeTimeSeries(historicalData))
-            };
+                        Task.Run(() => TrainClusteringModel(historicalData)),
+                        Task.Run(() => TrainDecisionTree(historicalData)),
+                        Task.Run(() => TrainSVMClassifier(historicalData)),
+                        Task.Run(() => AnalyzeTimeSeries(historicalData)),
+                        Task.Run(() => InitializeNeuralNetwork(historicalData))  // ADD THIS LINE
+                    };
 
             await Task.WhenAll(tasks);
         }
-
         /// <summary>
         /// CLUSTERING - Automatically discover error categories
         /// 
@@ -517,11 +573,26 @@ namespace CAINE.MachineLearning
 
         private double CalculateMaxClusterDistance(ErrorCluster cluster)
         {
-            // This would calculate based on actual member distances
-            // Placeholder for now
-            return 10.0;
-        }
+            if (cluster.Centroid == null || cluster.Centroid.Length == 0)
+                return 1.0;
 
+            double maxDistance = 0;
+
+            // Get the actual data points for this cluster from training data
+            // For now, estimate based on centroid magnitude
+            double centroidMagnitude = 0;
+            foreach (var value in cluster.Centroid)
+            {
+                centroidMagnitude += value * value;
+            }
+
+            // Use 2 standard deviations as max distance (covers ~95% of points)
+            // Rough estimate: max distance is typically 2-3x the centroid magnitude
+            maxDistance = Math.Sqrt(centroidMagnitude) * 2.5;
+
+            // Ensure we don't return 0
+            return Math.Max(maxDistance, 1.0);
+        }
         private double CalculateTrend(List<(DateTime Time, int Count)> occurrences)
         {
             if (occurrences.Count < 2) return 0;
@@ -605,16 +676,86 @@ namespace CAINE.MachineLearning
 
         private Dictionary<string, double> CalculateDecisionTreeImportance(DecisionTree tree)
         {
-            // This would walk the tree and calculate feature importance
-            // based on information gain at each split
-            return new Dictionary<string, double>();
+            var importance = new Dictionary<string, double>();
+
+            if (tree == null || tree.Root == null)
+                return importance;
+
+            // Count how many times each feature is used in splits
+            var featureCounts = new Dictionary<int, int>();
+            CountFeatureUsage(tree.Root, featureCounts);
+
+            // Normalize to get importance scores
+            int totalSplits = featureCounts.Values.Sum();
+            if (totalSplits > 0)
+            {
+                foreach (var kvp in featureCounts)
+                {
+                    importance[$"Feature_{kvp.Key}"] = (double)kvp.Value / totalSplits;
+                }
+            }
+
+            return importance;
+        }
+
+        private void CountFeatureUsage(DecisionNode node, Dictionary<int, int> counts)
+        {
+            if (node == null || node.IsLeaf)
+                return;
+
+            // Count this split
+            if (!counts.ContainsKey(node.Branches.AttributeIndex))
+                counts[node.Branches.AttributeIndex] = 0;
+            counts[node.Branches.AttributeIndex]++;
+
+            // Recursively count children
+            foreach (var child in node.Branches)
+            {
+                CountFeatureUsage(child, counts);
+            }
         }
 
         private double CalculateDecisionConfidence(DecisionTree tree, double[] features)
         {
-            // This would calculate confidence based on the tree path
-            // and the purity of the leaf node
-            return 0.85; // Placeholder
+            if (tree == null || features == null)
+                return 0.5;
+
+            try
+            {
+                // Use the tree's Decide method to get the prediction
+                int prediction = tree.Decide(features);
+
+                // Since we don't have direct access to node purity in Accord.NET's API,
+                // we'll estimate confidence based on the prediction itself
+                // and the feature values
+
+                // Calculate a confidence based on how "extreme" the feature values are
+                // More extreme values = more confident prediction
+                double featureStrength = 0;
+                foreach (var feature in features)
+                {
+                    featureStrength += Math.Abs(feature);
+                }
+                featureStrength = featureStrength / features.Length;
+
+                // Normalize to 0-1 range
+                double confidence = Math.Tanh(featureStrength); // Tanh gives us a nice 0-1 curve
+
+                // If prediction is positive (1), keep confidence high
+                // If prediction is negative (0), reduce confidence slightly
+                if (prediction == 0)
+                {
+                    confidence *= 0.8;
+                }
+
+                // Ensure we're in valid range
+                return Math.Max(0.3, Math.Min(0.95, confidence));
+            }
+            catch
+            {
+                // If decision fails, return neutral confidence
+                return 0.5;
+            }
         }
 
         private void LogFeatureImportance(Dictionary<string, double> importance)

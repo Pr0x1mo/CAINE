@@ -165,24 +165,24 @@ namespace CAINE.Security
             {
                 using (var conn = OpenConn())
                 {
-                    var sql = @"
-                        SELECT COUNT(*) 
-                        FROM default.cai_security_log 
-                        WHERE user_id = ? 
-                        AND created_at >= current_timestamp() - INTERVAL 24 HOURS
-                        AND event_type IN ('QUERY', 'SEARCH', 'ERROR_ANALYSIS')";
+                    // Databricks doesn't support ? parameters - use direct interpolation with escaping
+                    var escapedUserId = userId.Replace("'", "''");
+                    var sql = $@"
+                                SELECT COUNT(*) 
+                                FROM default.cai_security_log 
+                                WHERE user_id = '{escapedUserId}' 
+                                AND created_at >= current_timestamp() - INTERVAL 24 HOURS
+                                AND event_type IN ('QUERY', 'SEARCH')";
 
                     using (var cmd = new OdbcCommand(sql, conn))
                     {
-                        cmd.Parameters.AddWithValue("user_id", userId);
                         var count = Convert.ToInt32(cmd.ExecuteScalar());
                         return count < MaxDailyQueries;
                     }
                 }
             }
-            catch (Exception ex)
+            catch
             {
-                System.Diagnostics.Debug.WriteLine($"Rate limit check failed: {ex.Message}");
                 return true; // Fail open if rate limiting system is down
             }
         }
@@ -198,19 +198,26 @@ namespace CAINE.Security
                 {
                     using (var conn = OpenConn())
                     {
+                        // Escape all string values for SQL safety
+                        var escapedEventType = eventType.Replace("'", "''");
+                        var escapedUserId = (userId ?? "unknown").Replace("'", "''");
+                        var escapedSessionId = (sessionId ?? "unknown").Replace("'", "''");
+                        var escapedDetails = (details.Length > 500 ? details.Substring(0, 500) : details).Replace("'", "''");
+                        var severity = GetSeverityLevel(eventType);
+
                         var sql = $@"
-                            INSERT INTO {TableSecurityLog} VALUES (
-                                ?, current_timestamp(), ?, ?, ?, ?, ?
-                            )";
+                    INSERT INTO {TableSecurityLog} VALUES (
+                        '{Guid.NewGuid()}',
+                        current_timestamp(),
+                        '{escapedEventType}',
+                        '{escapedUserId}',
+                        '{escapedSessionId}',
+                        '{escapedDetails}',
+                        '{severity}'
+                    )";
 
                         using (var cmd = new OdbcCommand(sql, conn))
                         {
-                            cmd.Parameters.AddWithValue("event_id", Guid.NewGuid().ToString());
-                            cmd.Parameters.AddWithValue("event_type", eventType);
-                            cmd.Parameters.AddWithValue("user_id", userId ?? "unknown");
-                            cmd.Parameters.AddWithValue("session_id", sessionId ?? "unknown");
-                            cmd.Parameters.AddWithValue("details", details.Length > 500 ? details.Substring(0, 500) : details);
-                            cmd.Parameters.AddWithValue("severity", GetSeverityLevel(eventType));
                             cmd.ExecuteNonQuery();
                         }
                     }

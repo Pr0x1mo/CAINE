@@ -260,7 +260,7 @@ CAINE/
 
 ## License
 
-[Your License Here]
+[ProximusDaviticus]
 
 ## Support
 

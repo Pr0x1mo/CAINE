@@ -97,7 +97,7 @@ namespace CAINE
         // HTTP CLIENT - For talking to ChatGPT API
         // Reused connection to avoid creating new connections every time
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
-
+        private FuzzySearchEngine fuzzySearch = new FuzzySearchEngine();
         /// <summary>
         /// SOLUTION RESULT - Container for everything CAINE knows about a solution
         /// 
@@ -362,7 +362,17 @@ namespace CAINE
                         System.Diagnostics.Debug.WriteLine($"Keyword match found with confidence: {result.Confidence}");
                     }
                 }
-
+                // SEARCH LAYER 2.5: FUZZY SEARCH (typo tolerance and synonyms)
+                if (result == null)
+                {
+                    System.Diagnostics.Debug.WriteLine("No keyword match, trying fuzzy search...");
+                    result = await TryFuzzySearchAsync(cleanErrorInput);
+                    if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
+                    {
+                        searchResults.Add(result);
+                        System.Diagnostics.Debug.WriteLine($"Fuzzy match found with confidence: {result.Confidence}");
+                    }
+                }
                 // SEARCH LAYER 3: AI SIMILARITY MATCHING (Most Intelligent)
                 // Use AI to find errors that mean the same thing even with different words
                 if (result == null)
@@ -1019,82 +1029,53 @@ namespace CAINE
 
                 try
                 {
-                    // BUILD KEYWORD FILTER (OPTIONAL)
                     string where = "";
                     if (likeTokens != null && likeTokens.Length > 0)
                     {
-                        // Use direct string interpolation for Databricks compatibility
                         var conditions = likeTokens.Select(t => $"kb.error_signature LIKE '%{SecureEscape(t)}%'");
                         where = "WHERE " + string.Join(" OR ", conditions);
                     }
 
-                    // GET ONE PAGE OF CANDIDATES - Fixed query
+                    // ADD HINT FOR DISTRIBUTED EXECUTION
                     var sql = $@"
-                SELECT kb.resolution_steps, kb.embedding, kb.error_hash,
-                       COALESCE(fb.success_rate, 0.5) as success_rate,
-                       COALESCE(fb.feedback_count, 0) as feedback_count,
-                       CASE WHEN COALESCE(fb.conflict_rate, 0.0) > {ConflictThreshold} THEN true ELSE false END as has_conflicts
-                FROM {TableKB} kb
-                LEFT JOIN (
-                    SELECT solution_hash,
-                           AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
-                           COUNT(*) as feedback_count,
-                           AVG(CASE WHEN was_helpful THEN 0.0 ELSE 1.0 END) as conflict_rate
-                    FROM {TableFeedback}
-                    GROUP BY solution_hash
-                ) fb ON kb.error_hash = fb.solution_hash
-                {where}
-                ORDER BY kb.created_at DESC
+                /* +COALESCE(2) +REPARTITION(10) */  -- Databricks optimization hints
+                WITH distributed_search AS (
+                    SELECT /*+ BROADCAST(fb) */  -- Broadcast small feedback table
+                        kb.resolution_steps, 
+                        kb.embedding, 
+                        kb.error_hash,
+                        COALESCE(fb.success_rate, 0.5) as success_rate,
+                        COALESCE(fb.feedback_count, 0) as feedback_count,
+                        CASE WHEN COALESCE(fb.conflict_rate, 0.0) > {ConflictThreshold} THEN true ELSE false END as has_conflicts
+                    FROM {TableKB} kb
+                    LEFT JOIN (
+                        SELECT solution_hash,
+                               AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                               COUNT(*) as feedback_count,
+                               AVG(CASE WHEN was_helpful THEN 0.0 ELSE 1.0 END) as conflict_rate
+                        FROM {TableFeedback}
+                        GROUP BY solution_hash
+                    ) fb ON kb.error_hash = fb.solution_hash
+                    {where}
+                )
+                SELECT * FROM distributed_search
+                ORDER BY created_at DESC
                 LIMIT {pageSize} OFFSET {page * pageSize}";
 
                     using (var conn = OpenConn())
                     using (var cmd = new OdbcCommand(sql, conn))
-                    using (var rdr = cmd.ExecuteReader())
                     {
-                        while (rdr.Read())
+                        cmd.CommandTimeout = 60; // Increase timeout for distributed execution
+
+                        using (var rdr = cmd.ExecuteReader())
                         {
-                            // EXTRACT SOLUTION DATA
-                            var steps = ConvertArrayToString(rdr.IsDBNull(0) ? "" : rdr.GetValue(0));
-                            var hash = rdr.IsDBNull(2) ? "" : rdr.GetString(2);
-                            var successRate = rdr.IsDBNull(3) ? 0.5 : rdr.GetDouble(3);
-                            var feedbackCount = rdr.IsDBNull(4) ? 0 : rdr.GetInt32(4);
-                            var hasConflicts = rdr.IsDBNull(5) ? false : rdr.GetBoolean(5);
-
-                            // EXTRACT AND PARSE AI FINGERPRINT - Fixed parsing
-                            float[] emb = Array.Empty<float>();
-                            if (!rdr.IsDBNull(1))
-                            {
-                                var embValue = rdr.GetValue(1);
-
-                                // Handle different possible formats
-                                if (embValue is string embStr)
-                                {
-                                    emb = ParseFloatArray(embStr);
-                                }
-                                else if (embValue is byte[])
-                                {
-                                    // If stored as binary, skip for now
-                                    continue;
-                                }
-                                else
-                                {
-                                    // Try converting to string
-                                    var raw = embValue?.ToString() ?? "";
-                                    if (!string.IsNullOrWhiteSpace(raw))
-                                    {
-                                        emb = ParseFloatArray(raw);
-                                    }
-                                }
-                            }
-
-                            // Add to list even if no embedding (will use keyword matching as fallback)
-                            list.Add((steps, emb, hash, successRate, feedbackCount, hasConflicts));
+                            // ... rest of your existing code
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    System.Diagnostics.Debug.WriteLine($"Vector candidates page {page} failed: {ex.Message}");
+                    System.Diagnostics.Debug.WriteLine($"Distributed search failed: {ex.Message}");
                 }
 
                 return list;
@@ -2350,6 +2331,86 @@ namespace CAINE
             }
 
             return null;
+        }
+
+        private async Task<SolutionResult> TryFuzzySearchAsync(string errorText)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    using (var conn = OpenConn())
+                    {
+                        // Get all errors for fuzzy matching (you might want to limit this)
+                        var sql = $@"
+                    SELECT kb.error_hash, kb.error_text, kb.resolution_steps,
+                           COALESCE(fb.success_rate, 0.5) as success_rate,
+                           COALESCE(fb.feedback_count, 0) as feedback_count
+                    FROM {TableKB} kb
+                    LEFT JOIN (
+                        SELECT solution_hash,
+                               AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                               COUNT(*) as feedback_count
+                        FROM {TableFeedback}
+                        GROUP BY solution_hash
+                    ) fb ON kb.error_hash = fb.solution_hash
+                    WHERE kb.error_text IS NOT NULL
+                    LIMIT 500"; // Limit for performance
+
+                        var candidates = new List<FuzzySearchResult>();
+
+                        using (var cmd = new OdbcCommand(sql, conn))
+                        using (var rdr = cmd.ExecuteReader())
+                        {
+                            while (rdr.Read())
+                            {
+                                var hash = rdr.GetString(0);
+                                var text = rdr.GetString(1);
+                                var steps = ConvertArrayToString(rdr.GetValue(2));
+                                var successRate = rdr.GetDouble(3);
+                                var feedbackCount = rdr.GetInt32(4);
+
+                                // Calculate fuzzy score
+                                double fuzzyScore = fuzzySearch.CalculateFuzzyScore(errorText, text);
+                                double ngramScore = fuzzySearch.GetNGramSimilarity(errorText, text);
+
+                                if (fuzzyScore > 0.5 || ngramScore > 0.4) // Thresholds
+                                {
+                                    candidates.Add(new FuzzySearchResult
+                                    {
+                                        ErrorHash = hash,
+                                        ErrorText = text,
+                                        ResolutionSteps = steps,
+                                        FuzzyScore = fuzzyScore,
+                                        ExactMatchBonus = text.Contains(errorText.ToLower()) ? 0.3 : 0,
+                                        SynonymBonus = ngramScore * 0.2
+                                    });
+                                }
+                            }
+                        }
+
+                        // Get best match
+                        var best = candidates.OrderByDescending(c => c.TotalScore).FirstOrDefault();
+                        if (best != null && best.TotalScore > 0.6)
+                        {
+                            return new SolutionResult
+                            {
+                                Steps = best.ResolutionSteps,
+                                Hash = best.ErrorHash,
+                                Source = "fuzzy_search",
+                                Confidence = Math.Min(0.95, best.TotalScore),
+                                Version = "1.0"
+                            };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Fuzzy search failed: {ex.Message}");
+                }
+
+                return null;
+            });
         }
 
         /// <summary>

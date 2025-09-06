@@ -1,17 +1,20 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using Accord;
 using Accord.MachineLearning;
 using Accord.MachineLearning.DecisionTrees;
 using Accord.MachineLearning.DecisionTrees.Learning;
+using Accord.MachineLearning.Performance;
 using Accord.MachineLearning.VectorMachines;
 using Accord.MachineLearning.VectorMachines.Learning;
-using Accord.Statistics.Kernels;
 using Accord.Math.Distances;
-using Accord.MachineLearning.Performance;
+using Accord.Statistics.Kernels;
 using MathNet.Numerics.LinearAlgebra;
-
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using TorchSharp;
+using static TorchSharp.torch;
+using static TorchSharp.torch.nn;
 namespace CAINE.MachineLearning
 {
     /// <summary>
@@ -87,24 +90,37 @@ namespace CAINE.MachineLearning
         {
             if (data.Count < MinSamplesForTraining) return;
 
-            // Determine input size from features
-            int inputSize = data[0].Features.Length;
-            int hiddenSize = Math.Max(10, inputSize / 2); // Hidden layer is half of input
-            int outputSize = 2; // Binary classification: will work / won't work
-
-            neuralNetwork = new SimpleNeuralNetwork(inputSize, hiddenSize, outputSize);
-
-            // Prepare training data
-            double[][] inputs = data.Select(d => d.Features).ToArray();
-            double[][] targets = data.Select(d => new double[]
+            try
             {
-        d.SolutionWorked ? 1.0 : 0.0,  // Success
-        d.SolutionWorked ? 0.0 : 1.0   // Failure (inverse)
-            }).ToArray();
+                // Determine sizes
+                int inputSize = data[0].Features.Length;
+                int hiddenSize = Math.Max(10, inputSize / 2);
+                int outputSize = 2;
 
-            // Train the network
-            neuralNetwork.Train(inputs, targets, epochs: 100);
-            isNeuralNetworkTrained = true;
+                // Create GPU-accelerated network
+                neuralNetwork = new SimpleNeuralNetwork(inputSize, hiddenSize, outputSize);
+
+                // Prepare training data
+                double[][] inputs = data.Select(d => d.Features).ToArray();
+                double[][] targets = data.Select(d => new double[]
+                {
+            d.SolutionWorked ? 1.0 : 0.0,
+            d.SolutionWorked ? 0.0 : 1.0
+                }).ToArray();
+
+                // Train on GPU
+                neuralNetwork.Train(inputs, targets, epochs: 100);
+                isNeuralNetworkTrained = true;
+
+                System.Diagnostics.Debug.WriteLine("Neural network training completed on " +
+                    (torch.cuda.is_available() ? "GPU" : "CPU"));
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Neural network initialization failed: {ex.Message}");
+                // Fall back to CPU or disable neural network features
+                isNeuralNetworkTrained = false;
+            }
         }
 
         // Add this method to use the neural network for predictions
@@ -781,148 +797,94 @@ namespace CAINE.MachineLearning
         }
     }
 
+
+
+
     /// <summary>
-    /// NEURAL NETWORK COMPONENT - Deep learning for complex patterns
-    /// 
-    /// WHAT THIS DOES:
-    /// Implements a simple feedforward neural network for learning
-    /// non-linear patterns in error resolution
+    /// GPU-ACCELERATED NEURAL NETWORK using TorchSharp
+    /// Direct replacement for SimpleNeuralNetwork
     /// </summary>
-    public class SimpleNeuralNetwork
+
+
+public class SimpleNeuralNetwork : TorchSharp.torch.nn.Module<TorchSharp.torch.Tensor, TorchSharp.torch.Tensor>
     {
+        private readonly TorchSharp.torch.Device device;
+        private readonly TorchSharp.torch.nn.Module<TorchSharp.torch.Tensor, TorchSharp.torch.Tensor> fc1;
+        private readonly TorchSharp.torch.nn.Module<TorchSharp.torch.Tensor, TorchSharp.torch.Tensor> fc2;
+        private readonly TorchSharp.torch.nn.Module<TorchSharp.torch.Tensor, TorchSharp.torch.Tensor> fc3;
+        private readonly TorchSharp.torch.nn.Module<TorchSharp.torch.Tensor, TorchSharp.torch.Tensor> dropout;
         private readonly int inputSize;
-        private readonly int hiddenSize;
         private readonly int outputSize;
-        private double[,] weightsInputHidden;
-        private double[,] weightsHiddenOutput;
-        private double[] biasHidden;
-        private double[] biasOutput;
-        private readonly double learningRate = 0.01;
 
         public SimpleNeuralNetwork(int inputSize, int hiddenSize, int outputSize)
+            : base($"CAINE_NN_{inputSize}_{hiddenSize}_{outputSize}")
         {
             this.inputSize = inputSize;
-            this.hiddenSize = hiddenSize;
             this.outputSize = outputSize;
 
-            InitializeWeights();
+            // Use GPU if available, otherwise CPU
+            device = TorchSharp.torch.cuda.is_available() ? TorchSharp.torch.CUDA : TorchSharp.torch.CPU;
+            System.Diagnostics.Debug.WriteLine($"Neural Network using: {(device == TorchSharp.torch.CUDA ? "GPU" : "CPU")}");
+
+            // Create layers using the static methods
+            fc1 = TorchSharp.torch.nn.Linear(inputSize, hiddenSize);
+            fc2 = TorchSharp.torch.nn.Linear(hiddenSize, hiddenSize);
+            fc3 = TorchSharp.torch.nn.Linear(hiddenSize, outputSize);
+            dropout = TorchSharp.torch.nn.Dropout(0.2);
+
+            RegisterComponents();
+            this.to(device);
         }
 
-        private void InitializeWeights()
+        public override TorchSharp.torch.Tensor forward(TorchSharp.torch.Tensor input)
         {
-            var random = new Random();
+            var x = TorchSharp.torch.nn.functional.relu(fc1.forward(input));
+            x = dropout.forward(x);
+            x = TorchSharp.torch.nn.functional.relu(fc2.forward(x));
+            x = dropout.forward(x);
+            return TorchSharp.torch.nn.functional.softmax(fc3.forward(x), 1);
+        }
 
-            // Xavier initialization for better convergence
-            double inputScale = Math.Sqrt(2.0 / inputSize);
-            double hiddenScale = Math.Sqrt(2.0 / hiddenSize);
+        public void Train(double[][] inputs, double[][] targets, int epochs)
+        {
+            // Correct parameter name is 'lr' not 'learningRate'
+            var optimizer = TorchSharp.torch.optim.Adam(parameters(), lr: 0.001);
 
-            weightsInputHidden = new double[inputSize, hiddenSize];
-            weightsHiddenOutput = new double[hiddenSize, outputSize];
-            biasHidden = new double[hiddenSize];
-            biasOutput = new double[outputSize];
+            // Convert to tensors
+            var inputTensor = TorchSharp.torch.tensor(inputs.SelectMany(x => x).ToArray(),
+                new[] { (long)inputs.Length, (long)inputSize }).to(device);
+            var targetTensor = TorchSharp.torch.tensor(targets.SelectMany(x => x).ToArray(),
+                new[] { (long)targets.Length, (long)outputSize }).to(device);
 
-            for (int i = 0; i < inputSize; i++)
+            for (int epoch = 0; epoch < epochs; epoch++)
             {
-                for (int j = 0; j < hiddenSize; j++)
-                {
-                    weightsInputHidden[i, j] = random.NextDouble() * inputScale - inputScale / 2;
-                }
-            }
+                var output = forward(inputTensor);
+                var loss = TorchSharp.torch.nn.functional.mse_loss(output, targetTensor);
 
-            for (int i = 0; i < hiddenSize; i++)
-            {
-                for (int j = 0; j < outputSize; j++)
+                optimizer.zero_grad();
+                loss.backward();
+                optimizer.step();
+
+                if (epoch % 100 == 0)
                 {
-                    weightsHiddenOutput[i, j] = random.NextDouble() * hiddenScale - hiddenScale / 2;
+                    System.Diagnostics.Debug.WriteLine($"Epoch {epoch}, Loss: {loss.item<float>():F4}");
                 }
             }
         }
 
         public double[] Forward(double[] input)
         {
-            // Hidden layer
-            double[] hidden = new double[hiddenSize];
-            for (int j = 0; j < hiddenSize; j++)
-            {
-                double sum = biasHidden[j];
-                for (int i = 0; i < inputSize; i++)
-                {
-                    sum += input[i] * weightsInputHidden[i, j];
-                }
-                hidden[j] = ReLU(sum); // ReLU activation
-            }
+            using var inputTensor = TorchSharp.torch.tensor(input, new[] { 1L, (long)inputSize }).to(device);
+            using var output = forward(inputTensor);
+            using var cpuOutput = output.to(TorchSharp.torch.CPU);
 
-            // Output layer
-            double[] output = new double[outputSize];
-            for (int j = 0; j < outputSize; j++)
-            {
-                double sum = biasOutput[j];
-                for (int i = 0; i < hiddenSize; i++)
-                {
-                    sum += hidden[i] * weightsHiddenOutput[i, j];
-                }
-                output[j] = Sigmoid(sum); // Sigmoid for classification
-            }
-
-            return output;
-        }
-
-        public void Train(double[][] inputs, double[][] targets, int epochs)
-        {
-            for (int epoch = 0; epoch < epochs; epoch++)
-            {
-                double totalLoss = 0;
-
-                for (int sample = 0; sample < inputs.Length; sample++)
-                {
-                    // Forward pass
-                    double[] output = Forward(inputs[sample]);
-
-                    // Calculate loss
-                    double loss = CalculateLoss(output, targets[sample]);
-                    totalLoss += loss;
-
-                    // Backward pass (simplified backpropagation)
-                    Backpropagate(inputs[sample], targets[sample], output);
-                }
-
-                if (epoch % 100 == 0)
-                {
-                    Console.WriteLine($"Epoch {epoch}, Loss: {totalLoss / inputs.Length:F4}");
-                }
-            }
-        }
-
-        private void Backpropagate(double[] input, double[] target, double[] output)
-        {
-            // This is a simplified version of backpropagation
-            // In production, you'd use a more sophisticated implementation
-
-            // Calculate output layer gradients
-            double[] outputGradients = new double[outputSize];
+            var result = new double[outputSize];
             for (int i = 0; i < outputSize; i++)
             {
-                outputGradients[i] = (output[i] - target[i]) * SigmoidDerivative(output[i]);
+                result[i] = cpuOutput[0, i].item<float>();
             }
 
-            // Update weights and biases using gradients
-            // (Full implementation would include hidden layer gradients)
-        }
-
-        private double ReLU(double x) => Math.Max(0, x);
-        private double Sigmoid(double x) => 1.0 / (1.0 + Math.Exp(-x));
-        private double SigmoidDerivative(double x) => x * (1 - x);
-
-        private double CalculateLoss(double[] output, double[] target)
-        {
-            // Binary cross-entropy loss
-            double loss = 0;
-            for (int i = 0; i < output.Length; i++)
-            {
-                loss -= target[i] * Math.Log(output[i] + 1e-10) +
-                        (1 - target[i]) * Math.Log(1 - output[i] + 1e-10);
-            }
-            return loss / output.Length;
+            return result;
         }
     }
 }

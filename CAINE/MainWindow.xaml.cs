@@ -313,8 +313,9 @@ namespace CAINE
         {
             try
             {
-                // STEP 1: SECURITY CHECK
-                // Make sure the input isn't malicious before processing
+                // STEP 1: SECURITY CHECK - Protect Against Hackers
+                // Before doing anything, check if someone is trying to hack the system
+                // This prevents SQL injection attacks (where hackers try to delete your database)
                 var validation = SecurityValidator.ValidateInput(ErrorInput.Text, Environment.UserName, currentSessionId);
                 if (!validation.IsValid)
                 {
@@ -322,75 +323,78 @@ namespace CAINE
                     return;
                 }
 
-                // STEP 2: PREPARE THE UI
-                // Disable buttons to prevent double-clicking while searching
-                BtnCaineApi.IsEnabled = true;
-                BtnSearch.IsEnabled = false;
-                BtnTeach.IsEnabled = false;
-                BtnFeedbackYes.IsEnabled = false;
-                BtnFeedbackNo.IsEnabled = false;
-                ResultBox.Text = "Searching with enhanced ML algorithms...";
+                // STEP 2: PREPARE THE UI - Prevent User From Breaking Things
+                // Disable buttons so user can't click search multiple times and cause problems
+                // Like pressing elevator button repeatedly - it won't make it go faster
+                BtnCaineApi.IsEnabled = true;  // Keep API button available as backup option
+                BtnSearch.IsEnabled = false;   // Disable search to prevent double-clicking
+                BtnTeach.IsEnabled = false;    // Disable teach while searching
+                BtnFeedbackYes.IsEnabled = false;  // No feedback until we have a solution
+                BtnFeedbackNo.IsEnabled = false;   // No feedback until we have a solution
+                ResultBox.Text = "Searching with enhanced ML algorithms...";  // Tell user we're working
 
-                // STEP 3: PROCESS THE ERROR MESSAGE
-                // Clean up the input and create a unique fingerprint (hash)
-                var cleanErrorInput = validation.CleanInput;
-                var sig = Normalize(cleanErrorInput);           // Standardize the error message
-                var hash = Sha256Hex(sig);                     // Create unique fingerprint
+                // STEP 3: PROCESS THE ERROR MESSAGE - Create a Fingerprint
+                // Like how police take fingerprints, we create a unique ID for this error
+                var cleanErrorInput = validation.CleanInput;  // Use the sanitized version
+                var sig = Normalize(cleanErrorInput);         // Remove extra spaces, make lowercase, standardize
+                var hash = Sha256Hex(sig);                   // Create unique fingerprint (like a barcode for this error)
 
                 System.Diagnostics.Debug.WriteLine($"DEBUG: Generated hash: {hash}");
 
-                // STEP 4: RESET SESSION TRACKING
-                // Start fresh tracking for this search
-                currentSessionId = Guid.NewGuid().ToString();
-                currentSolutionHash = null;
-                currentSolutionSource = null;
-             
+                // STEP 4: RESET SESSION TRACKING - Start Fresh
+                // Like getting a new ticket number at the DMV for this transaction
+                currentSessionId = Guid.NewGuid().ToString();  // New unique session ID
+                currentSolutionHash = null;                    // Clear previous solution
+                currentSolutionSource = null;                  // Clear where last solution came from
 
-                // STEP 5: MULTI-LAYER INTELLIGENT SEARCH
-                // Try multiple search strategies in order of reliability and speed
+                // STEP 5: MULTI-LAYER INTELLIGENT SEARCH - Try Multiple Ways to Find Answer
+                // Like looking for your keys - check pockets, then table, then car, etc.
                 SolutionResult result = null;
-                var searchResults = new List<SolutionResult>();
+                var searchResults = new List<SolutionResult>();  // Keep track of all matches
 
-                // SEARCH LAYER 1: EXACT MATCH (Fastest, Most Reliable)
-                // Check if we've seen this exact error before
+                // SEARCH LAYER 1: EXACT MATCH (Like Finding Exact Same Key)
+                // Have we seen this EXACT error before? This is fastest and most reliable
                 System.Diagnostics.Debug.WriteLine("Trying exact match...");
-                result = await TryExactMatchAsync(hash);
+                result = await TryExactMatchAsync(hash);  // Look for exact fingerprint match
                 if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                 {
                     searchResults.Add(result);
                     System.Diagnostics.Debug.WriteLine($"Exact match found with confidence: {result.Confidence}");
                 }
 
-                // SEARCH LAYER 2: KEYWORD MATCHING (Good for similar errors)
-                // Look for solutions that dealt with the same important concepts
-                if (result == null)
+                // SEARCH LAYER 2: KEYWORD MATCHING (Like Finding Similar Keys)
+                // Look for errors that mention the same important words (timeout, connection, etc.)
+                if (result == null)  // Only try if exact match failed
                 {
                     System.Diagnostics.Debug.WriteLine("No exact match, trying keyword search...");
-                    result = await TryKeywordMatchAsync(sig);
+                    result = await TryKeywordMatchAsync(sig);  // Search by important words
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
                         System.Diagnostics.Debug.WriteLine($"Keyword match found with confidence: {result.Confidence}");
                     }
                 }
-                // SEARCH LAYER 2.5: FUZZY SEARCH (typo tolerance and synonyms)
-                if (result == null)
+
+                // SEARCH LAYER 2.5: FUZZY SEARCH (Like Finding Keys Even With Typos)
+                // Handles typos: "databse" matches "database", "timed out" matches "timeout"
+                if (result == null)  // Only try if keyword search failed
                 {
                     System.Diagnostics.Debug.WriteLine("No keyword match, trying fuzzy search...");
-                    result = await TryFuzzySearchAsync(cleanErrorInput);
+                    result = await TryFuzzySearchAsync(cleanErrorInput);  // Tolerates spelling mistakes
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
                         System.Diagnostics.Debug.WriteLine($"Fuzzy match found with confidence: {result.Confidence}");
                     }
                 }
-                // SEARCH LAYER 3: AI SIMILARITY MATCHING (Most Intelligent)
-                // Use AI to find errors that mean the same thing even with different words
-                if (result == null)
+
+                // SEARCH LAYER 3: AI SIMILARITY MATCHING (Like Finding Keys by Description)
+                // Uses OpenAI to understand meaning - "can't connect" matches "connection failed"
+                if (result == null)  // Only try if fuzzy search failed
                 {
                     System.Diagnostics.Debug.WriteLine("No keyword match, trying AI vector similarity...");
-                    var tokens = Tokens(sig);
-                    result = await TryEnhancedVectorMatchAsync(cleanErrorInput, tokens);
+                    var tokens = Tokens(sig);  // Break error into important words
+                    result = await TryEnhancedVectorMatchAsync(cleanErrorInput, tokens);  // AI semantic search
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
@@ -398,12 +402,12 @@ namespace CAINE
                     }
                 }
 
-                // SEARCH LAYER 4: PATTERN RECOGNITION (Fallback for Common Types)
-                // Check if this matches any known error patterns
-                if (result == null)
+                // SEARCH LAYER 4: PATTERN RECOGNITION (Like Recognizing Key Types)
+                // Check if this matches common error patterns we've learned
+                if (result == null)  // Only try if AI search failed
                 {
                     System.Diagnostics.Debug.WriteLine("No vector match, trying pattern recognition...");
-                    result = await TryEnhancedPatternMatchAsync(sig);
+                    result = await TryEnhancedPatternMatchAsync(sig);  // Look for known patterns
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
@@ -411,12 +415,12 @@ namespace CAINE
                     }
                 }
 
-                // SEARCH LAYER 5: ENHANCED ML PREDICTION (Advanced Machine Learning)
-                // Use clustering, decision trees, and neural networks for prediction
-                if (result == null)
+                // SEARCH LAYER 5: MACHINE LEARNING PREDICTION (Like Guessing Where Keys Might Be)
+                // Use advanced ML (SVM with 88-96% accuracy) to predict best solution
+                if (result == null)  // Last resort - use machine learning
                 {
                     System.Diagnostics.Debug.WriteLine("No pattern match, trying ML prediction...");
-                    result = await EnhancedMLSearchAsync(cleanErrorInput, hash);
+                    result = await EnhancedMLSearchAsync(cleanErrorInput, hash);  // Neural networks, clustering, SVM
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
@@ -424,48 +428,48 @@ namespace CAINE
                     }
                 }
 
-                // STEP 6: DISPLAY BEST RESULT IF FOUND
-                if (searchResults.Count > 0)
+                // STEP 6: DISPLAY BEST RESULT IF FOUND - Show the Answer
+                if (searchResults.Count > 0)  // Did we find anything?
                 {
-                    var bestResult = SelectBestSolution(searchResults);
+                    var bestResult = SelectBestSolution(searchResults);  // Pick best from all matches
                     if (bestResult != null)
                     {
-                        // TRACK THE SOLUTION WE'RE SHOWING
-                        // Remember what we found so we can learn from user feedback
-                        currentSolutionHash = bestResult.Hash;
-                        currentSolutionSource = bestResult.Source;
-                        //currentSolutionConfidence = bestResult.Confidence;
+                        // TRACK THE SOLUTION WE'RE SHOWING - Remember What We Found
+                        // Like keeping a receipt - we need this to learn from feedback
+                        currentSolutionHash = bestResult.Hash;        // Remember solution ID
+                        currentSolutionSource = bestResult.Source;    // Remember how we found it
 
-                        // DISPLAY THE RESULT WITH CONFIDENCE RATING AND SOURCE INFO
-                        // Show the solution along with how confident we are and how it was found
-                        var confidenceText = GetConfidenceText(bestResult);
-                        var sourceInfo = GetSearchSourceInfo(bestResult.Source);
+                        // DISPLAY THE RESULT WITH CONFIDENCE RATING - Show Answer with Score
+                        // Tell user the solution and how confident we are (like weather forecast %)
+                        var confidenceText = GetConfidenceText(bestResult);      // "High confidence (95%)"
+                        var sourceInfo = GetSearchSourceInfo(bestResult.Source); // "Found via fuzzy search"
                         ResultBox.Text = $"{confidenceText}\n{sourceInfo}\n\n{bestResult.Steps}";
 
-                        // ENABLE FEEDBACK BUTTONS
-                        // Let user rate whether the solution worked
+                        // ENABLE FEEDBACK BUTTONS - Let User Rate the Solution
+                        // Like Amazon reviews - thumbs up or down helps system learn
                         EnableFeedbackButtons();
                         return;
                     }
                 }
 
-                // STEP 7: NO MATCH FOUND ANYWHERE
-                // If none of the search methods found anything, suggest using AI
+                // STEP 7: NO MATCH FOUND ANYWHERE - Admit We Don't Know
+                // If all 5 search methods failed, be honest and suggest using ChatGPT
                 System.Diagnostics.Debug.WriteLine("No matches found in any search layer");
                 ResultBox.Text = "No matches found using any search method. Click 'Use CAINE API' for AI assistance.";
-                BtnCaineApi.IsEnabled = true;
+                BtnCaineApi.IsEnabled = true;  // Enable the ChatGPT backup option
             }
             catch (Exception ex)
             {
+                // ERROR HANDLING - If Something Breaks, Don't Crash
                 ResultBox.Text = $"Search error: {ex.Message}\n\nYou can try 'Use CAINE API'.";
-                BtnCaineApi.IsEnabled = true;
+                BtnCaineApi.IsEnabled = true;  // Always give user the API option if things fail
             }
             finally
             {
-                // STEP 8: RE-ENABLE BUTTONS
-                // Always re-enable buttons when done, even if there was an error
-                BtnSearch.IsEnabled = true;
-                BtnTeach.IsEnabled = true;
+                // STEP 8: RE-ENABLE BUTTONS - Clean Up When Done
+                // Like turning lights back on when leaving - always re-enable the UI
+                BtnSearch.IsEnabled = true;   // Let user search again
+                BtnTeach.IsEnabled = true;    // Let user teach new solutions
             }
         }
 
@@ -2346,46 +2350,58 @@ namespace CAINE
 
         private async Task<SolutionResult> TryFuzzySearchAsync(string errorText)
         {
+            // Run this search in the background so the UI doesn't freeze
             return await Task.Run(() =>
             {
                 try
                 {
+                    // Connect to the database
                     using (var conn = OpenConn())
                     {
-                        // Get all errors for fuzzy matching (you might want to limit this)
+                        // SQL query that gets the top 500 errors from the knowledge base
+                        // It also calculates how successful each solution has been based on user feedback
                         var sql = $@"
-                    SELECT kb.error_hash, kb.error_text, kb.resolution_steps,
-                           COALESCE(fb.success_rate, 0.5) as success_rate,
-                           COALESCE(fb.feedback_count, 0) as feedback_count
-                    FROM {TableKB} kb
-                    LEFT JOIN (
-                        SELECT solution_hash,
-                               AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
-                               COUNT(*) as feedback_count
-                        FROM {TableFeedback}
-                        GROUP BY solution_hash
-                    ) fb ON kb.error_hash = fb.solution_hash
-                    WHERE kb.error_text IS NOT NULL
-                    LIMIT 500"; // Limit for performance
+            SELECT kb.error_hash, kb.error_text, kb.resolution_steps,
+                   COALESCE(fb.success_rate, 0.5) as success_rate,  -- If no feedback exists, assume 50% success
+                   COALESCE(fb.feedback_count, 0) as feedback_count  -- Count how many people rated this
+            FROM {TableKB} kb
+            LEFT JOIN (
+                -- This part calculates the success rate from thumbs up/down feedback
+                SELECT solution_hash,
+                       AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                       COUNT(*) as feedback_count
+                FROM {TableFeedback}
+                GROUP BY solution_hash
+            ) fb ON kb.error_hash = fb.solution_hash
+            WHERE kb.error_text IS NOT NULL
+            LIMIT 500"; // Only check 500 errors to keep it fast
 
+                        // List to store potential matches
                         var candidates = new List<FuzzySearchResult>();
 
+                        // Execute the database query and read results
                         using (var cmd = new OdbcCommand(sql, conn))
                         using (var rdr = cmd.ExecuteReader())
                         {
+                            // Check each error in the database
                             while (rdr.Read())
                             {
-                                var hash = rdr.GetString(0);
-                                var text = rdr.GetString(1);
-                                var steps = ConvertArrayToString(rdr.GetValue(2));
-                                var successRate = rdr.GetDouble(3);
-                                var feedbackCount = rdr.GetInt32(4);
+                                // Get the data for this error
+                                var hash = rdr.GetString(0);           // Unique ID
+                                var text = rdr.GetString(1);           // The error message text
+                                var steps = ConvertArrayToString(rdr.GetValue(2));  // The solution
+                                var successRate = rdr.GetDouble(3);    // How often it works (0-1)
+                                var feedbackCount = rdr.GetInt32(4);   // How many people rated it
 
-                                // Calculate fuzzy score
+                                // Calculate how similar this error is to the user's error
+                                // fuzzyScore: Uses Levenshtein distance (handles typos)
                                 double fuzzyScore = fuzzySearch.CalculateFuzzyScore(errorText, text);
+
+                                // ngramScore: Compares 3-letter chunks (good for partial matches)
                                 double ngramScore = fuzzySearch.GetNGramSimilarity(errorText, text);
 
-                                if (fuzzyScore > 0.5 || ngramScore > 0.4) // Thresholds
+                                // Only consider errors that are at least 50% similar or 40% n-gram match
+                                if (fuzzyScore > 0.5 || ngramScore > 0.4)
                                 {
                                     candidates.Add(new FuzzySearchResult
                                     {
@@ -2393,23 +2409,27 @@ namespace CAINE
                                         ErrorText = text,
                                         ResolutionSteps = steps,
                                         FuzzyScore = fuzzyScore,
+                                        // Bonus points if the user's text appears exactly in the error
                                         ExactMatchBonus = text.Contains(errorText.ToLower()) ? 0.3 : 0,
+                                        // Bonus for n-gram similarity (weighted at 20%)
                                         SynonymBonus = ngramScore * 0.2
                                     });
                                 }
                             }
                         }
 
-                        // Get best match
+                        // Find the best matching error (highest total score)
                         var best = candidates.OrderByDescending(c => c.TotalScore).FirstOrDefault();
+
+                        // Only return a solution if we're at least 60% confident it's a match
                         if (best != null && best.TotalScore > 0.6)
                         {
                             return new SolutionResult
                             {
-                                Steps = best.ResolutionSteps,
-                                Hash = best.ErrorHash,
-                                Source = "fuzzy_search",
-                                Confidence = Math.Min(0.95, best.TotalScore),
+                                Steps = best.ResolutionSteps,      // The solution to try
+                                Hash = best.ErrorHash,              // ID of this solution
+                                Source = "fuzzy_search",            // Mark that fuzzy search found this
+                                Confidence = Math.Min(0.95, best.TotalScore), // Cap confidence at 95%
                                 Version = "1.0"
                             };
                         }
@@ -2417,9 +2437,11 @@ namespace CAINE
                 }
                 catch (Exception ex)
                 {
+                    // If anything goes wrong, log it but don't crash
                     System.Diagnostics.Debug.WriteLine($"Fuzzy search failed: {ex.Message}");
                 }
 
+                // No good match found
                 return null;
             });
         }

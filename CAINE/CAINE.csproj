@@ -119,6 +119,9 @@
     <Compile Include="CaineMLEngine.cs" />
     <Compile Include="FuzzySearchEngine.cs" />
     <Compile Include="InteractiveSolutionTree.cs" />
+    <Compile Include="MLDashboardWindow.xaml.cs">
+      <DependentUpon>MLDashboardWindow.xaml</DependentUpon>
+    </Compile>
     <Compile Include="Security\SecurityValidator.cs" />
     <Compile Include="SolutionParser.cs" />
     <Compile Include="SolutionTreeWindow.xaml.cs">
@@ -142,6 +145,10 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Page Include="MLDashboardWindow.xaml">
+      <SubType>Designer</SubType>
+      <Generator>MSBuild:Compile</Generator>
+    </Page>
     <Page Include="SolutionTreeWindow.xaml">
       <SubType>Designer</SubType>
       <Generator>MSBuild:Compile</Generator>

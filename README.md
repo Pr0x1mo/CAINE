@@ -7,12 +7,13 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 ### Core Capabilities
 - **Multi-Layer Search**: 6 different search strategies from exact matching to ML predictions
 - **Machine Learning Engine**: SVM (88-96% accuracy), clustering, decision trees, neural networks
-- **Fuzzy Search**: Handles typos and variations with Levenshtein distance and N-gram analysis
+- **Enhanced Fuzzy Search**: Handles typos and variations with Levenshtein distance and N-gram analysis
 - **Distributed Computing**: Leverages Databricks SQL Warehouse for scalability
 - **Interactive Troubleshooting**: Visual decision trees with auto-launch capabilities
 - **Security First**: SQL injection protection, rate limiting, audit logging
+- **Real-time Analytics**: Live ML performance dashboard with actual usage metrics
 
-## Version 3.0 - Full ML Enhancement
+## Version 3.0 - Full ML Enhancement with Production Dashboard
 
 ### What's New in v3.0
 - **GPU-Accelerated Neural Networks** (TorchSharp integration active)
@@ -20,8 +21,9 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 - **Comprehensive Fuzzy Search Engine** with synonym matching and n-gram analysis
 - **Enhanced Security Layer** with intelligent error/attack discrimination
 - **Scalable Vector Search** with LSH hashing and intelligent caching
-- **Real-time Analytics Dashboard** with ML performance metrics
+- **Production ML Dashboard** showing real usage metrics and performance data
 - **Unified Confidence Calculator** combining multiple ML predictions
+- **Fixed Performance Tracking** with actual user feedback integration
 
 ### Machine Learning Components
 
@@ -32,6 +34,13 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 - **Neural Networks**: TorchSharp-powered deep learning with GPU acceleration
 - **Time Series Analysis**: Forecasts error trends and patterns
 - **Anomaly Detection**: Identifies new error types requiring attention
+
+#### ML Dashboard Data Sources
+- **Model Performance**: Real accuracy from actual user feedback
+- **Feature Importance**: Analysis of error characteristics that correlate with success
+- **Cluster Analysis**: Automatic categorization of errors (Network, Security, Performance, Data Issues)
+- **Trend Predictions**: ML-based forecasting of error patterns
+- **Anomaly Detection**: Statistical analysis of unusual error patterns
 
 #### ML Activation Thresholds
 - **< 50 samples**: Basic ML mode (clustering only)
@@ -99,12 +108,14 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 - **Success Tracking**: Monitors solution effectiveness across all search methods
 - **Unified Confidence**: Combines ML predictions, user feedback, and similarity scores
 
-### Analytics Dashboard
-- **Real-time Metrics**: Solution count, success rates, active users, security events
-- **ML Performance**: Model accuracy, confidence distributions, anomaly detection rates
-- **Search Strategy Analytics**: Effectiveness of each search layer
-- **Interactive Tree Metrics**: Success rates and usage patterns
+### Production Analytics Dashboard
+- **Real-time Metrics**: Actual solution count, success rates, active users, security events
+- **ML Performance**: Model accuracy from real user feedback, confidence distributions
+- **Search Strategy Analytics**: Effectiveness of each search layer based on actual usage
+- **Interactive Tree Metrics**: Success rates and usage patterns from real troubleshooting sessions
 - **System Health**: Overall status with ML-enhanced monitoring
+- **Feature Analysis**: Hour-of-day performance patterns from actual user data
+- **Error Clustering**: Automatic categorization based on real error signatures
 
 ## Installation
 
@@ -161,6 +172,7 @@ CREATE TABLE default.cai_error_kb (
     resolution_steps ARRAY<STRING>,
     embedding ARRAY<FLOAT>,
     confidence_score DOUBLE,
+    solution_source STRING,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
     source STRING,
@@ -253,6 +265,13 @@ CREATE TABLE default.cai_error_patterns (
 5. **Apply**: Follow the solution steps
 6. **Feedback**: Click 👍 or 👎 to improve ML models
 
+### ML Dashboard Access
+- Click "Analytics" button in main window
+- View real-time performance metrics from actual usage
+- Monitor ML model accuracy and effectiveness
+- Track error clustering and trend predictions
+- Review feature importance analysis
+
 ### Interactive Troubleshooting
 - **Auto-Launch**: Triggered automatically for low-confidence or complex errors
 - **Manual Access**: Click "🌳 Interactive" button anytime
@@ -282,18 +301,38 @@ CREATE TABLE default.cai_error_patterns (
 - **Cache Hit Rate**: 60-70% for repeated queries with intelligent caching
 - **Confidence Growth**: 20% → 100% after ~10 positive feedbacks
 
+## ML Dashboard Data Types
+
+### Real Usage Data (from your actual system usage)
+- **Model Performance**: Calculated from real user thumbs up/down feedback
+- **Feature Importance**: Error length analysis from actual KB entries
+- **Time-based Patterns**: Hour-of-day success rates from real feedback timestamps
+- **Error Clustering**: Categorization based on actual error signatures in your database
+- **Search Method Effectiveness**: Success rates by search type (exact match, fuzzy, etc.)
+
+### Estimated/Simulated Data (shown when insufficient real data)
+- **Anomaly Detection**: Estimates 5% anomaly rate when no ML model available
+- **Trend Predictions**: Shows "Prediction unavailable" if ML engine not trained
+- **Cold Start Messages**: "No recent feedback data available" until you use the system
+
+### Dashboard Activation Requirements
+- **Basic Dashboard**: Available immediately (shows "Loading..." messages)
+- **Real Metrics**: Requires actual system usage and user feedback
+- **Full ML Insights**: Requires 50+ feedback entries for meaningful analysis
+
 ## File Structure
 
 ```
 CAINE/
-├── MainWindow.xaml.cs              # Core search and ML integration
+├── MainWindow.xaml.cs             # Core search and ML integration
 ├── CaineMLEngine.cs               # Machine learning models
 ├── FuzzySearchEngine.cs           # Fuzzy matching algorithms
 ├── InteractiveSolutionTree.cs     # Decision tree logic
 ├── SolutionTreeWindow.xaml.cs     # Interactive UI window
 ├── TreeVisualizationControl.cs    # Visual tree rendering
 ├── SolutionParser.cs              # Solution step parsing
-├── AnalyticsWindow.xaml.cs        # Dashboard and metrics
+├── AnalyticsWindow.xaml.cs        # Main analytics dashboard
+├── MLDashboardWindow.xaml.cs      # ML-specific metrics dashboard
 ├── Security/
 │   └── SecurityValidator.cs       # Security validation layer
 └── Vector/
@@ -313,6 +352,11 @@ CAINE/
 - Verify Databricks SQL Warehouse is running
 - Check DSN configuration in ODBC Data Sources
 - Ensure firewall allows connection
+
+**Dashboard showing "no data available"**
+- Normal for new installations
+- Use CAINE to search for errors and provide feedback
+- Dashboard becomes meaningful after 10+ uses with feedback
 
 **Low confidence scores**
 - Need 50+ feedback entries for full ML activation
@@ -340,7 +384,7 @@ Monitor the Analytics Dashboard for:
 
 ## Version History
 
-- **v3.0** (2024) - Full ML enhancement with neural networks, auto-launching trees, and advanced vector search
+- **v3.0** (2024) - Full ML enhancement with neural networks, auto-launching trees, advanced vector search, and production analytics dashboard
 - **v2.1** (2024) - Interactive troubleshooting with decision trees
 - **v2.0** (2024) - Machine learning integration
 - **v1.0** (2024) - Initial release with ChatGPT integration
@@ -367,6 +411,7 @@ Monitor the Analytics Dashboard for:
 For issues or questions:
 - Open an issue on GitHub
 - Check the Analytics Dashboard for system health
+- Review ML Dashboard for performance metrics
 - Review security logs for blocked threats
 - Contact your system administrator
 
@@ -380,4 +425,4 @@ For issues or questions:
 
 ---
 
-**Remember**: CAINE improves with every use. The more feedback you provide, the better it becomes at solving your specific problems. With 50+ feedback entries, full ML capabilities activate automatically, including neural networks and auto-launching interactive troubleshooting!
+**Remember**: CAINE improves with every use. The more feedback you provide, the better it becomes at solving your specific problems. The ML Dashboard shows real metrics from your actual usage - with 50+ feedback entries, full ML capabilities activate automatically, including neural networks and auto-launching interactive troubleshooting!

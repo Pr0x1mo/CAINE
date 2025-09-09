@@ -378,7 +378,11 @@ namespace CAINE
                 var features = ExtractFeatures(cleanErrorInput);
                 // [ML PREPROCESSING & COMPREHENSIVE ML SEARCH]
                 var mlInsights = await PerformMLPreprocessingAsync(cleanErrorInput, features, sig);
-
+                var trendAnalysis = await GetErrorTrendAnalysisAsync(CategorizeError(sig));
+                if (!string.IsNullOrEmpty(trendAnalysis))
+                {
+                    ResultBox.Text += $"\n\n{trendAnalysis}";
+                }
                 // STEP 5: PERIODIC MAINTENANCE
                 // [MAINTENANCE & VECTOR INDEX]
                 await PerformPeriodicMaintenanceAsync();
@@ -388,7 +392,13 @@ namespace CAINE
                 var searchResults = new List<SolutionResult>();
 
                 // [SUGGESTIONS & DISPLAY HELPERS]
+             
+              
                 var mlInsightsText = GenerateMLInsightsText(mlInsights);
+                if (!string.IsNullOrEmpty(trendAnalysis))
+                {
+                    mlInsightsText += $"\n{trendAnalysis}";
+                }
                 if (!string.IsNullOrEmpty(mlInsightsText))
                 {
                     ResultBox.Text += $"\n\n{mlInsightsText}";
@@ -1286,18 +1296,8 @@ namespace CAINE
 
             try
             {
-                // Apply neural network confidence adjustment
-                if (insights.NeuralPrediction != null)
-                {
-                    var mlWeight = 0.3; // 30% ML influence
-                    result.Confidence = (result.Confidence * (1 - mlWeight)) + (insights.NeuralPrediction.Confidence * mlWeight);
-                }
-
-                // Apply anomaly detection
-                if (insights.IsAnomaly)
-                {
-                    result.Confidence *= 0.8; // Reduce confidence for anomalous errors
-                }
+                // Use the unified confidence calculator instead of manual adjustments
+                result.Confidence = CalculateResultConfidence(result, insights);
 
                 return result;
             }
@@ -2756,6 +2756,9 @@ namespace CAINE
         {
             var analyticsWindow = new AnalyticsWindow();
             analyticsWindow.Show();
+
+            // ADD THIS LINE:
+            ShowMLDashboard();
         }
 
         /// <summary>
@@ -2777,54 +2780,15 @@ namespace CAINE
 
             try
             {
-                var errorText = ErrorInput.Text;
-                var normalizedSig = SecureEscape(Normalize(errorText));
-
-                await Task.Run(() =>
-                {
-                    using (var conn = OpenConn())
-                    {
-                        // RECORD POSITIVE FEEDBACK
-                        var sql = $@"
-            INSERT INTO {TableFeedback} (
-                feedback_id,
-                session_id,
-                solution_hash,
-                solution_source,
-                was_helpful,
-                user_comment,
-                created_at,
-                error_signature
-            ) VALUES (
-                '{Guid.NewGuid()}',
-                '{currentSessionId}',
-                '{currentSolutionHash}',
-                '{currentSolutionSource}',
-                true,
-                '',
-                current_timestamp(),
-                '{normalizedSig}'
-            )";
-
-                        using (var cmd = new OdbcCommand(sql, conn))
-                        {
-                            cmd.ExecuteNonQuery();
-                        }
-
-                        System.Diagnostics.Debug.WriteLine("Positive feedback recorded successfully");
-                    }
-                });
+                await RecordMLFeedbackAsync(true, currentSolutionHash);
 
                 DisableFeedbackButtons();
 
                 // REFRESH CONFIDENCE DISPLAY
-                // Show the updated confidence score immediately
                 var updatedResult = await GetUpdatedConfidence(currentSolutionHash);
                 if (updatedResult != null)
                 {
                     var newConfidenceText = GetConfidenceText(updatedResult);
-
-                    // Update just the confidence line in the display
                     var lines = ResultBox.Text.Split('\n');
                     lines[0] = newConfidenceText;
                     ResultBox.Text = string.Join("\n", lines);
@@ -2909,54 +2873,15 @@ namespace CAINE
 
             try
             {
-                var errorText = ErrorInput.Text;
-                var normalizedSig = SecureEscape(Normalize(errorText));
-
-                await Task.Run(() =>
-                {
-                    using (var conn = OpenConn())
-                    {
-                        // RECORD NEGATIVE FEEDBACK
-                        var sql = $@"
-                    INSERT INTO {TableFeedback} (
-                        feedback_id,
-                        session_id,
-                        solution_hash,
-                        solution_source,
-                        was_helpful,
-                        user_comment,
-                        created_at,
-                        error_signature
-                    ) VALUES (
-                        '{Guid.NewGuid()}',
-                        '{currentSessionId}',
-                        '{currentSolutionHash}',
-                        '{currentSolutionSource}',
-                        false,                          -- Mark as NOT helpful
-                        '',
-                        current_timestamp(),
-                        '{normalizedSig}'
-                    )";
-
-                        using (var cmd = new OdbcCommand(sql, conn))
-                        {
-                            cmd.ExecuteNonQuery();
-                        }
-
-                        System.Diagnostics.Debug.WriteLine("Negative feedback recorded successfully");
-                    }
-                });
+                await RecordMLFeedbackAsync(false, currentSolutionHash);
 
                 DisableFeedbackButtons();
 
                 // REFRESH CONFIDENCE DISPLAY
-                // Show the updated (likely lower) confidence score
                 var updatedResult = await GetUpdatedConfidence(currentSolutionHash);
                 if (updatedResult != null)
                 {
                     var newConfidenceText = GetConfidenceText(updatedResult);
-
-                    // Update the confidence line in the display
                     var lines = ResultBox.Text.Split('\n');
                     lines[0] = newConfidenceText;
                     ResultBox.Text = string.Join("\n", lines);
@@ -4186,12 +4111,17 @@ namespace CAINE
                 return;
             }
 
-            // This would open a new window showing:
-            // - Error clusters visualization
-            // - Trend predictions
-            // - Model accuracy metrics
-            // - Feature importance rankings
-            // - Anomaly detection alerts
+            try
+            {
+                var mlDashboard = new MLDashboardWindow(mlEngine);
+                mlDashboard.Owner = this;
+                mlDashboard.Show();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Could not open ML Dashboard: {ex.Message}",
+                               "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
         }
     }
 }

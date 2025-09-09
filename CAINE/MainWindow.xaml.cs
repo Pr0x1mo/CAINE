@@ -15,6 +15,8 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using CAINE.Security;
 using CAINE.MachineLearning;
+using CAINE.Vector;
+
 
 namespace CAINE
 {
@@ -74,10 +76,10 @@ namespace CAINE
         private const string TablePatterns = "default.cai_error_patterns";   // Pattern matching rules - like shortcuts for common errors
         private const string TableFeedback = "default.cai_solution_feedback"; // User ratings - tracks which solutions actually work
         private const string TableKBVersions = "default.cai_kb_versions";    // Version history - keeps track of changes over time
+        private bool isNeuralNetworkTrained = false;  
+                                                      // SMART SEARCH SETTINGS - How CAINE decides if solutions are good enough
+                                                      // These numbers control how picky CAINE is when suggesting solutions
 
-        // SMART SEARCH SETTINGS - How CAINE decides if solutions are good enough
-        // These numbers control how picky CAINE is when suggesting solutions
-        
         private const int LikeTokenMax = 4;                  // Max keywords to search with
         private const double VectorMinCosine = 0.70;         // How similar errors need to be (70% minimum)
         private const double FeedbackBoostThreshold = 0.7;   // When to prioritize highly-rated solutions
@@ -108,6 +110,8 @@ namespace CAINE
         // Reused connection to avoid creating new connections every time
         private static readonly HttpClient Http = new HttpClient { Timeout = TimeSpan.FromSeconds(60) };
         private FuzzySearchEngine fuzzySearch = new FuzzySearchEngine();
+        private ScalableVectorManager.OptimizedVectorSearch vectorSearchEngine;
+        private ScalableVectorManager.VectorCacheManager vectorCacheManager;
         /// <summary>
         /// SOLUTION RESULT - Container for everything CAINE knows about a solution
         /// 
@@ -154,8 +158,11 @@ namespace CAINE
 
         private async Task MainWindow_LoadedAsync()
         {
-            // Initialize ML components after window loads
+            // Existing ML initialization
             await InitializeMLComponentsAsync();
+
+            // ADD THIS LINE:
+            await InitializeAdvancedVectorSearchAsync();
         }
         /// <summary>
         /// DATABASE SETUP - Creates all the tables CAINE needs to store knowledge
@@ -295,27 +302,20 @@ namespace CAINE
         }
 
         /// <summary>
-        /// MAIN SEARCH FUNCTION - The heart of CAINE's intelligence
+        /// ENHANCED MAIN SEARCH FUNCTION - Now with automatic Interactive Decision Tree integration
         /// 
-        /// WHAT THIS DOES WHEN USER CLICKS "SEARCH":
-        /// 1. Checks if the input is safe (security validation)
-        /// 2. Creates a unique fingerprint of the error message
-        /// 3. Looks for exact matches in the knowledge base
-        /// 4. If found, shows the solution with confidence rating
-        /// 5. If not found, suggests using AI assistance
-        /// 
-        /// LIKE A SMART LIBRARIAN:
-        /// - First checks if we've seen this exact book before
-        /// - Shows how reliable our answer is based on past feedback
-        /// - If we haven't seen it, suggests asking an expert (ChatGPT)
+        /// DECISION TREE AUTO-TRIGGERS FOR:
+        /// - Low confidence results (< 60%)
+        /// - Complex multi-step solutions
+        /// - Anomalous errors flagged by ML
+        /// - When multiple conflicting solutions exist
+        /// - First-time users encountering specific error types
         /// </summary>
         private async void BtnSearch_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                // STEP 1: SECURITY CHECK - Protect Against Hackers
-                // Before doing anything, check if someone is trying to hack the system
-                // This prevents SQL injection attacks (where hackers try to delete your database)
+                // STEP 1: SECURITY VALIDATION
                 var validation = SecurityValidator.ValidateInput(ErrorInput.Text, Environment.UserName, currentSessionId);
                 if (!validation.IsValid)
                 {
@@ -323,153 +323,1215 @@ namespace CAINE
                     return;
                 }
 
-                // STEP 2: PREPARE THE UI - Prevent User From Breaking Things
-                // Disable buttons so user can't click search multiple times and cause problems
-                // Like pressing elevator button repeatedly - it won't make it go faster
-                BtnCaineApi.IsEnabled = true;  // Keep API button available as backup option
-                BtnSearch.IsEnabled = false;   // Disable search to prevent double-clicking
-                BtnTeach.IsEnabled = false;    // Disable teach while searching
-                BtnFeedbackYes.IsEnabled = false;  // No feedback until we have a solution
-                BtnFeedbackNo.IsEnabled = false;   // No feedback until we have a solution
-                ResultBox.Text = "Searching with enhanced ML algorithms...";  // Tell user we're working
+                // STEP 2: PREPARE UI
+                BtnCaineApi.IsEnabled = true;
+                BtnSearch.IsEnabled = false;
+                BtnTeach.IsEnabled = false;
+                BtnFeedbackYes.IsEnabled = false;
+                BtnFeedbackNo.IsEnabled = false;
+                ResultBox.Text = "Analyzing with enhanced ML, fuzzy matching, and interactive guidance...";
 
-                // STEP 3: PROCESS THE ERROR MESSAGE - Create a Fingerprint
-                // Like how police take fingerprints, we create a unique ID for this error
-                var cleanErrorInput = validation.CleanInput;  // Use the sanitized version
-                var sig = Normalize(cleanErrorInput);         // Remove extra spaces, make lowercase, standardize
-                var hash = Sha256Hex(sig);                   // Create unique fingerprint (like a barcode for this error)
+                // STEP 3: PROCESS ERROR MESSAGE
+                var cleanErrorInput = validation.CleanInput;
+                var sig = Normalize(cleanErrorInput);
+                var hash = Sha256Hex(sig);
 
-                System.Diagnostics.Debug.WriteLine($"DEBUG: Generated hash: {hash}");
+                currentSessionId = Guid.NewGuid().ToString();
+                currentSolutionHash = null;
+                currentSolutionSource = null;
 
-                // STEP 4: RESET SESSION TRACKING - Start Fresh
-                // Like getting a new ticket number at the DMV for this transaction
-                currentSessionId = Guid.NewGuid().ToString();  // New unique session ID
-                currentSolutionHash = null;                    // Clear previous solution
-                currentSolutionSource = null;                  // Clear where last solution came from
+                // STEP 4: ML PREPROCESSING
+                var features = ExtractFeatures(cleanErrorInput);
+                var mlInsights = await PerformMLPreprocessingAsync(cleanErrorInput, features, sig);
 
-                // STEP 5: MULTI-LAYER INTELLIGENT SEARCH - Try Multiple Ways to Find Answer
-                // Like looking for your keys - check pockets, then table, then car, etc.
+                // STEP 5: PERIODIC MAINTENANCE
+                await PerformPeriodicMaintenanceAsync();
+
+                // STEP 6: ENHANCED SEARCH PIPELINE
                 SolutionResult result = null;
-                var searchResults = new List<SolutionResult>();  // Keep track of all matches
+                var searchResults = new List<SolutionResult>();
 
-                // SEARCH LAYER 1: EXACT MATCH (Like Finding Exact Same Key)
-                // Have we seen this EXACT error before? This is fastest and most reliable
-                System.Diagnostics.Debug.WriteLine("Trying exact match...");
-                result = await TryExactMatchAsync(hash);  // Look for exact fingerprint match
+                var mlInsightsText = GenerateMLInsightsText(mlInsights);
+                if (!string.IsNullOrEmpty(mlInsightsText))
+                {
+                    ResultBox.Text += $"\n\n{mlInsightsText}";
+                }
+
+                // SEARCH LAYER 1: EXACT MATCH
+                result = await TryExactMatchAsync(hash);
                 if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                 {
+                    result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                     searchResults.Add(result);
-                    System.Diagnostics.Debug.WriteLine($"Exact match found with confidence: {result.Confidence}");
                 }
 
-                // SEARCH LAYER 2: KEYWORD MATCHING (Like Finding Similar Keys)
-                // Look for errors that mention the same important words (timeout, connection, etc.)
-                if (result == null)  // Only try if exact match failed
+                // SEARCH LAYER 2: ENHANCED KEYWORD SEARCH
+                if (result == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("No exact match, trying keyword search...");
-                    result = await TryKeywordMatchAsync(sig);  // Search by important words
+                    result = await TryEnhancedKeywordMatchAsync(sig);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
+                        result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                         searchResults.Add(result);
-                        System.Diagnostics.Debug.WriteLine($"Keyword match found with confidence: {result.Confidence}");
                     }
                 }
 
-                // SEARCH LAYER 2.5: FUZZY SEARCH (Like Finding Keys Even With Typos)
-                // Handles typos: "databse" matches "database", "timed out" matches "timeout"
-                if (result == null)  // Only try if keyword search failed
+                // SEARCH LAYER 3: COMPREHENSIVE FUZZY SEARCH
+                if (result == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("No keyword match, trying fuzzy search...");
-                    result = await TryFuzzySearchAsync(cleanErrorInput);  // Tolerates spelling mistakes
+                    result = await TryEnhancedFuzzySearchAsync(cleanErrorInput);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
+                        result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                         searchResults.Add(result);
-                        System.Diagnostics.Debug.WriteLine($"Fuzzy match found with confidence: {result.Confidence}");
                     }
                 }
 
-                // SEARCH LAYER 3: AI SIMILARITY MATCHING (Like Finding Keys by Description)
-                // Uses OpenAI to understand meaning - "can't connect" matches "connection failed"
-                if (result == null)  // Only try if fuzzy search failed
+                // SEARCH LAYER 4: ADVANCED SCALABLE VECTOR SEARCH
+                if (result == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("No keyword match, trying AI vector similarity...");
-                    var tokens = Tokens(sig);  // Break error into important words
-                    result = await TryEnhancedVectorMatchAsync(cleanErrorInput, tokens);  // AI semantic search
+                    var tokens = Tokens(sig);
+                    result = await TryAdvancedScalableVectorMatchAsync(cleanErrorInput, tokens, features);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
-                        System.Diagnostics.Debug.WriteLine($"Vector similarity match found with confidence: {result.Confidence}");
                     }
                 }
 
-                // SEARCH LAYER 4: PATTERN RECOGNITION (Like Recognizing Key Types)
-                // Check if this matches common error patterns we've learned
-                if (result == null)  // Only try if AI search failed
+                // SEARCH LAYER 5: PATTERN RECOGNITION
+                if (result == null)
                 {
-                    System.Diagnostics.Debug.WriteLine("No vector match, trying pattern recognition...");
-                    result = await TryEnhancedPatternMatchAsync(sig);  // Look for known patterns
+                    result = await TryEnhancedPatternMatchAsync(sig);
+                    if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
+                    {
+                        result = await EnhanceResultWithMLAsync(result, features, mlInsights);
+                        searchResults.Add(result);
+                    }
+                }
+
+                // SEARCH LAYER 6: COMPREHENSIVE ML SEARCH
+                if (result == null)
+                {
+                    result = await ComprehensiveMLSearchAsync(cleanErrorInput, hash, features);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
                         searchResults.Add(result);
-                        System.Diagnostics.Debug.WriteLine($"Pattern match found with confidence: {result.Confidence}");
                     }
                 }
 
-                // SEARCH LAYER 5: MACHINE LEARNING PREDICTION (Like Guessing Where Keys Might Be)
-                // Use advanced ML (SVM with 88-96% accuracy) to predict best solution
-                if (result == null)  // Last resort - use machine learning
+                // STEP 7: DISPLAY RESULTS WITH INTERACTIVE TREE INTEGRATION
+                if (searchResults.Count > 0)
                 {
-                    System.Diagnostics.Debug.WriteLine("No pattern match, trying ML prediction...");
-                    result = await EnhancedMLSearchAsync(cleanErrorInput, hash);  // Neural networks, clustering, SVM
-                    if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
-                    {
-                        searchResults.Add(result);
-                        System.Diagnostics.Debug.WriteLine($"ML prediction found with confidence: {result.Confidence}");
-                    }
-                }
-
-                // STEP 6: DISPLAY BEST RESULT IF FOUND - Show the Answer
-                if (searchResults.Count > 0)  // Did we find anything?
-                {
-                    var bestResult = SelectBestSolution(searchResults);  // Pick best from all matches
+                    var bestResult = SelectBestSolutionWithML(searchResults, mlInsights);
                     if (bestResult != null)
                     {
-                        // TRACK THE SOLUTION WE'RE SHOWING - Remember What We Found
-                        // Like keeping a receipt - we need this to learn from feedback
-                        currentSolutionHash = bestResult.Hash;        // Remember solution ID
-                        currentSolutionSource = bestResult.Source;    // Remember how we found it
+                        currentSolutionHash = bestResult.Hash;
+                        currentSolutionSource = bestResult.Source;
 
-                        // DISPLAY THE RESULT WITH CONFIDENCE RATING - Show Answer with Score
-                        // Tell user the solution and how confident we are (like weather forecast %)
-                        var confidenceText = GetConfidenceText(bestResult);      // "High confidence (95%)"
-                        var sourceInfo = GetSearchSourceInfo(bestResult.Source); // "Found via fuzzy search"
-                        ResultBox.Text = $"{confidenceText}\n{sourceInfo}\n\n{bestResult.Steps}";
+                        // CHECK IF INTERACTIVE TREE SHOULD AUTO-LAUNCH
+                        var treeRecommendation = await EvaluateInteractiveTreeNeedAsync(bestResult, mlInsights, cleanErrorInput);
 
-                        // ENABLE FEEDBACK BUTTONS - Let User Rate the Solution
-                        // Like Amazon reviews - thumbs up or down helps system learn
+                        var confidenceText = GetMLEnhancedConfidenceText(bestResult, mlInsights);
+                        var sourceInfo = GetEnhancedSearchSourceInfo(bestResult.Source);
+                        var searchInsights = GetSearchMethodInsights(bestResult.Source, searchResults.Count);
+
+                        // Display result with tree recommendation
+                        var resultDisplay = $"{confidenceText}\n{sourceInfo}\n{searchInsights}\n{mlInsightsText}";
+
+                        if (treeRecommendation.ShouldUseTree)
+                        {
+                            resultDisplay += $"\n\n{treeRecommendation.RecommendationText}";
+
+                            // AUTO-LAUNCH TREE if criteria are strongly met
+                            if (treeRecommendation.AutoLaunch)
+                            {
+                                resultDisplay += "\n\nLaunching interactive troubleshooting guide...";
+                                ResultBox.Text = resultDisplay + $"\n\n{bestResult.Steps}";
+
+                                EnableFeedbackButtons();
+
+                                // Launch tree after short delay to let user see the result
+                                await Task.Delay(1500);
+                                await LaunchInteractiveTreeAsync(hash, cleanErrorInput, bestResult);
+                                return;
+                            }
+                            else
+                            {
+                                // Show tree button prominently
+                                BtnInteractiveTree.IsEnabled = true;
+                                BtnInteractiveTree.Content = treeRecommendation.ButtonText;
+                            }
+                        }
+
+                        ResultBox.Text = resultDisplay + $"\n\n{bestResult.Steps}";
                         EnableFeedbackButtons();
                         return;
                     }
                 }
 
-                // STEP 7: NO MATCH FOUND ANYWHERE - Admit We Don't Know
-                // If all 5 search methods failed, be honest and suggest using ChatGPT
-                System.Diagnostics.Debug.WriteLine("No matches found in any search layer");
-                ResultBox.Text = "No matches found using any search method. Click 'Use CAINE API' for AI assistance.";
-                BtnCaineApi.IsEnabled = true;  // Enable the ChatGPT backup option
+                // STEP 8: NO MATCH FOUND - OFFER INTERACTIVE TREE AS SOLUTION PATH
+                System.Diagnostics.Debug.WriteLine("No matches found - offering interactive troubleshooting");
+
+                var suggestions = await GenerateMLEnhancedSuggestions(cleanErrorInput, features, mlInsights);
+                var noMatchMessage = "No matches found using enhanced ML and fuzzy search methods.";
+
+                // Always offer interactive tree for unknown errors
+                noMatchMessage += "\n\nGUIDED TROUBLESHOOTING: Since this error isn't in our knowledge base, try the interactive troubleshooting tree to work through it step-by-step.";
+
+                if (!string.IsNullOrEmpty(suggestions))
+                {
+                    noMatchMessage += $"\n\n{suggestions}";
+                }
+
+                if (!string.IsNullOrEmpty(mlInsightsText))
+                {
+                    noMatchMessage += $"\n\n{mlInsightsText}";
+                }
+
+                noMatchMessage += "\n\nClick 'Interactive Tree' for guided troubleshooting or 'Use CAINE API' for AI assistance.";
+
+                // Enable interactive tree for unknown errors
+                BtnInteractiveTree.IsEnabled = true;
+                BtnInteractiveTree.Content = "Start Guided Troubleshooting";
+
+                ResultBox.Text = noMatchMessage;
+                BtnCaineApi.IsEnabled = true;
             }
             catch (Exception ex)
             {
-                // ERROR HANDLING - If Something Breaks, Don't Crash
-                ResultBox.Text = $"Search error: {ex.Message}\n\nYou can try 'Use CAINE API'.";
-                BtnCaineApi.IsEnabled = true;  // Always give user the API option if things fail
+                ResultBox.Text = $"Enhanced search error: {ex.Message}\n\nTry 'Interactive Tree' for guided troubleshooting or 'Use CAINE API'.";
+                BtnCaineApi.IsEnabled = true;
+                BtnInteractiveTree.IsEnabled = true;
             }
             finally
             {
-                // STEP 8: RE-ENABLE BUTTONS - Clean Up When Done
-                // Like turning lights back on when leaving - always re-enable the UI
-                BtnSearch.IsEnabled = true;   // Let user search again
-                BtnTeach.IsEnabled = true;    // Let user teach new solutions
+                BtnSearch.IsEnabled = true;
+                BtnTeach.IsEnabled = true;
+            }
+        }
+
+        // SEPARATE METHOD - Move this outside of BtnSearch_Click
+        private async Task PerformPeriodicMaintenanceAsync()
+        {
+            // Only run maintenance occasionally to avoid performance impact
+            if (DateTime.Now.Minute % 10 == 0) // Every 10 minutes
+            {
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await PopulateVectorIndexAsync();
+                        System.Diagnostics.Debug.WriteLine("Periodic vector index maintenance completed");
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Periodic maintenance failed: {ex.Message}");
+                    }
+                });
+            }
+        }
+
+        private async Task PopulateVectorIndexAsync()
+        {
+            try
+            {
+                using (var conn = OpenConn())
+                {
+                    // Get existing knowledge base entries that don't have vector index entries
+                    var sql = $@"
+                SELECT kb.error_hash, kb.error_text, kb.resolution_steps, kb.embedding
+                FROM {TableKB} kb
+                LEFT JOIN default.cai_vector_index vi ON kb.error_hash = vi.error_hash
+                WHERE vi.error_hash IS NULL 
+                AND kb.embedding IS NOT NULL
+                LIMIT 100";
+
+                    using (var cmd = new OdbcCommand(sql, conn))
+                    using (var rdr = cmd.ExecuteReader())
+                    {
+                        var indexEntries = new List<(string Hash, string Text, float[] Vector)>();
+
+                        while (rdr.Read())
+                        {
+                            var hash = rdr.GetString(0);
+                            var text = rdr.GetString(1);
+                            var embeddingStr = rdr.IsDBNull(3) ? "" : rdr.GetString(3);
+
+                            var vector = ParseFloatArray(embeddingStr);
+                            if (vector.Length > 0)
+                            {
+                                indexEntries.Add((hash, text, vector));
+                            }
+                        }
+
+                        // Populate vector index using ScalableVectorManager logic
+                        foreach (var entry in indexEntries)
+                        {
+                            await PopulateVectorIndexEntry(entry.Hash, entry.Text, entry.Vector);
+                        }
+
+                        System.Diagnostics.Debug.WriteLine($"Populated vector index with {indexEntries.Count} entries");
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Vector index population failed: {ex.Message}");
+            }
+        }
+
+        // Helper method for populating individual vector index entries
+        private async Task PopulateVectorIndexEntry(string errorHash, string errorText, float[] vector)
+        {
+            try
+            {
+                using (var conn = OpenConn())
+                {
+                    // Generate LSH hashes for the vector (using ScalableVectorManager approach)
+                    var lshHashes = GenerateLSHHashesForVector(vector);
+                    var vectorJson = JsonConvert.SerializeObject(vector); // Use Newtonsoft.Json instead
+
+                    var sql = $@"
+                INSERT INTO default.cai_vector_index VALUES (
+                    '{Guid.NewGuid()}',
+                    '{errorHash}', 
+                    '{vectorJson}',
+                    '{lshHashes[0]}',
+                    '{lshHashes[1]}', 
+                    '{lshHashes[2]}',
+                    current_timestamp()
+                )";
+
+                    using (var cmd = new OdbcCommand(sql, conn))
+                    {
+                        await cmd.ExecuteNonQueryAsync();
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Vector index entry population failed: {ex.Message}");
+            }
+        }
+
+
+        // Simple LSH hash generation (adapted from ScalableVectorManager)
+        private string[] GenerateLSHHashesForVector(float[] vector)
+        {
+            var hashes = new List<string>();
+            var random = new Random(42); // Fixed seed for consistency
+
+            for (int i = 0; i < 3; i++)
+            {
+                var projection = 0.0;
+                for (int j = 0; j < Math.Min(vector.Length, 100); j++)
+                {
+                    projection += vector[j] * (random.NextDouble() - 0.5);
+                }
+
+                var bucket = ((int)(projection * 100)).ToString();
+                hashes.Add(bucket);
+            }
+
+            return hashes.ToArray();
+        }
+        private async Task<SolutionResult> SecureVectorSearchAsync(string rawError, string userId, string sessionId)
+        {
+            try
+            {
+                // STEP 1: SECURITY VALIDATION
+                var validation = ScalableVectorManager.SecurityValidator.ValidateInput(rawError, userId, sessionId);
+                if (!validation.IsValid)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Vector search blocked: {validation.ErrorMessage}");
+                    return null;
+                }
+
+                // STEP 2: CREATE VECTOR EMBEDDING
+                var queryVector = await EmbedAsync(validation.CleanInput);
+
+                // STEP 3: USE CACHED/OPTIMIZED SEARCH
+                if (vectorSearchEngine != null)
+                {
+                    var matches = await vectorSearchEngine.FindSimilarAsync(queryVector, 5, 0.70);
+
+                    if (matches != null && matches.Count > 0)
+                    {
+                        var bestMatch = matches.OrderByDescending(m => m.Similarity).First();
+
+                        return new SolutionResult
+                        {
+                            Steps = bestMatch.ResolutionSteps,
+                            Hash = bestMatch.ErrorHash,
+                            Source = "secure_scalable_vector",
+                            Confidence = bestMatch.Similarity,
+                            SuccessRate = bestMatch.ConfidenceScore,
+                            FeedbackCount = bestMatch.FeedbackCount,
+                            HasConflicts = false,
+                            Version = "Secure-2.0"
+                        };
+                    }
+                }
+
+                return null;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Secure vector search failed: {ex.Message}");
+                return null;
+            }
+        }
+        private async Task InitializeAdvancedVectorSearchAsync()
+        {
+            try
+            {
+                // Initialize vector search components
+                vectorSearchEngine = new ScalableVectorManager.OptimizedVectorSearch();
+                vectorCacheManager = new ScalableVectorManager.VectorCacheManager();
+
+                // Initialize cache tables
+                await vectorCacheManager.InitializeCacheTable();
+
+                System.Diagnostics.Debug.WriteLine("Advanced vector search initialized successfully");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Advanced vector search initialization failed: {ex.Message}");
+                // Continue without advanced vector search - fallback to basic method
+            }
+        }
+
+        private async Task<SolutionResult> TryAdvancedScalableVectorMatchAsync(string rawError, string[] likeTokens, double[] features)
+        {
+            try
+            {
+                // STEP 1: EXPAND QUERY WITH FUZZY SEARCH
+                var expandedTerms = fuzzySearch.ExpandWithSynonyms(rawError);
+                var enhancedQuery = string.Join(" ", expandedTerms.Take(3));
+
+                // STEP 2: USE ADVANCED SCALABLE VECTOR SEARCH
+                if (vectorSearchEngine != null)
+                {
+                    // Create AI fingerprint of enhanced query
+                    var queryEmb = await EmbedAsync(enhancedQuery);
+
+                    // Use the sophisticated ScalableVectorManager
+                    var vectorMatches = await vectorSearchEngine.FindSimilarAsync(
+                        queryEmb,
+                        limit: 10,
+                        minSimilarity: 0.70
+                    );
+
+                    if (vectorMatches != null && vectorMatches.Count > 0)
+                    {
+                        // Process results from ScalableVectorManager
+                        var bestMatch = vectorMatches
+                            .OrderByDescending(m => CalculateAdvancedVectorScore(m, features)) // Remove ScalableVectorManager prefix
+                            .FirstOrDefault();
+
+                        if (bestMatch != null)
+                        {
+                            return new SolutionResult
+                            {
+                                Steps = bestMatch.ResolutionSteps,
+                                Hash = bestMatch.ErrorHash,
+                                Source = "advanced_scalable_vector",
+                                Confidence = Math.Min(0.95, bestMatch.Similarity + (bestMatch.ConfidenceScore * 0.2)),
+                                SuccessRate = bestMatch.ConfidenceScore,
+                                FeedbackCount = bestMatch.FeedbackCount,
+                                HasConflicts = false,
+                                Version = "2.0"
+                            };
+                        }
+                    }
+                }
+
+                // FALLBACK: Use enhanced vector search if scalable search fails
+                System.Diagnostics.Debug.WriteLine("Falling back to enhanced vector search");
+                return await TryEnhancedVectorMatchAsync(rawError, likeTokens);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Advanced scalable vector search failed: {ex.Message}");
+                // Fallback to basic enhanced vector search
+                return await TryEnhancedVectorMatchAsync(rawError, likeTokens);
+            }
+        }
+
+        public class UnifiedConfidenceCalculator
+        {
+            private const int MinFeedbackForHighConfidence = 5;
+            private const double ConflictThreshold = 0.3;
+            private const double HighConfidenceThreshold = 0.85;
+
+            /// <summary>
+            /// Calculate comprehensive confidence score using all available factors
+            /// </summary>
+            public static double CalculateUnifiedConfidence(ConfidenceFactors factors)
+            {
+                var scores = new List<double>();
+                var weights = new List<double>();
+
+                // BASE CONFIDENCE from search method
+                if (factors.BaseSuccessRate.HasValue)
+                {
+                    scores.Add(factors.BaseSuccessRate.Value);
+                    weights.Add(0.4); // 40% weight for base success rate
+                }
+
+                // FEEDBACK CONFIDENCE from user ratings
+                if (factors.FeedbackCount > 0)
+                {
+                    var feedbackConfidence = CalculateFeedbackConfidence(
+                        factors.BaseSuccessRate ?? 0.5,
+                        factors.FeedbackCount,
+                        factors.ConflictRate ?? 0.0
+                    );
+                    scores.Add(feedbackConfidence);
+                    weights.Add(0.3); // 30% weight for user feedback
+                }
+
+                // ML CONFIDENCE from neural networks and clustering
+                if (factors.MLConfidence.HasValue)
+                {
+                    scores.Add(factors.MLConfidence.Value);
+                    weights.Add(0.2); // 20% weight for ML predictions
+                }
+
+                // SIMILARITY CONFIDENCE from vector/fuzzy matching
+                if (factors.SimilarityScore.HasValue)
+                {
+                    scores.Add(factors.SimilarityScore.Value);
+                    weights.Add(0.1); // 10% weight for similarity
+                }
+
+                // CALCULATE WEIGHTED AVERAGE
+                if (scores.Count == 0) return 0.5; // Default neutral confidence
+
+                var weightedSum = 0.0;
+                var totalWeight = 0.0;
+
+                for (int i = 0; i < scores.Count; i++)
+                {
+                    weightedSum += scores[i] * weights[i];
+                    totalWeight += weights[i];
+                }
+
+                var baseConfidence = weightedSum / totalWeight;
+
+                // APPLY MODIFIERS
+                return ApplyConfidenceModifiers(baseConfidence, factors);
+            }
+
+            private static double CalculateFeedbackConfidence(double successRate, int feedbackCount, double conflictRate)
+            {
+                // Sample size adjustment
+                var sampleConfidence = feedbackCount == 0 ? 1.0 : Math.Min(1.0, feedbackCount / (double)MinFeedbackForHighConfidence);
+
+                // Conflict penalty
+                var conflictPenalty = Math.Max(0.0, 1.0 - conflictRate * 2);
+
+                return successRate * sampleConfidence * conflictPenalty;
+            }
+
+            private static double ApplyConfidenceModifiers(double baseConfidence, ConfidenceFactors factors)
+            {
+                var modified = baseConfidence;
+
+                // ANOMALY PENALTY - Reduce confidence for unusual errors
+                if (factors.IsAnomaly)
+                {
+                    modified *= 0.8;
+                }
+
+                // COMPLEXITY BONUS - Slight boost for complex solutions that work
+                if (factors.SolutionComplexity > 4 && baseConfidence > 0.7)
+                {
+                    modified = Math.Min(0.95, modified * 1.1);
+                }
+
+                // TIME DECAY - Reduce confidence for very old solutions
+                if (factors.DaysOld > 365)
+                {
+                    var ageDecay = Math.Max(0.8, 1.0 - (factors.DaysOld - 365) / 1000.0);
+                    modified *= ageDecay;
+                }
+
+                // ENSURE BOUNDS
+                return Math.Max(0.05, Math.Min(0.99, modified));
+            }
+        }
+
+        /// <summary>
+        /// Container for all factors that influence confidence calculation
+        /// </summary>
+        public class ConfidenceFactors
+        {
+            public double? BaseSuccessRate { get; set; }
+            public int FeedbackCount { get; set; }
+            public double? ConflictRate { get; set; }
+            public double? MLConfidence { get; set; }
+            public double? SimilarityScore { get; set; }
+            public bool IsAnomaly { get; set; }
+            public int SolutionComplexity { get; set; }
+            public double DaysOld { get; set; }
+        }
+
+        
+
+
+        //private string GetFriendlyMethodName(string source)
+        //{
+        //    return source switch
+        //    {
+        //        "exact_match" => "Exact Hash Match",
+        //        "enhanced_fuzzy_keyword" => "Fuzzy Keyword Search",
+        //        "enhanced_fuzzy_search" => "Comprehensive Fuzzy",
+        //        "advanced_scalable_vector" => "AI Vector Similarity",
+        //        "pattern_match" => "Pattern Recognition",
+        //        "comprehensive_ml" => "ML Prediction",
+        //        "openai_enhanced" => "AI Generated",
+        //        _ => source
+        //    };
+        //}
+        // ADD this helper method for advanced vector scoring
+        private double CalculateAdvancedVectorScore(VectorMatch match, double[] features)
+        {
+            // Combine vector similarity with additional ML features
+            var baseScore = match.Similarity;
+
+            // Boost for high confidence solutions
+            var confidenceBonus = match.ConfidenceScore > 0.8 ? 0.1 : 0.0;
+
+            // Boost for solutions with significant feedback
+            var feedbackBonus = Math.Min(0.1, match.FeedbackCount * 0.01);
+
+            return baseScore + confidenceBonus + feedbackBonus;
+        }
+        /// <summary>
+        /// TREE EVALUATION - Determines when interactive trees should be recommended or auto-launched
+        /// </summary>
+        private async Task<TreeRecommendation> EvaluateInteractiveTreeNeedAsync(SolutionResult result, MLInsights insights, string errorInput)
+        {
+            var recommendation = new TreeRecommendation();
+
+            try
+            {
+                var reasons = new List<string>();
+                var score = 0;
+
+                // CRITERIA 1: Low confidence results need guided help
+                if (result.Confidence < 0.6)
+                {
+                    reasons.Add("low confidence solution");
+                    score += 2;
+                }
+
+                // CRITERIA 2: Complex multi-step solutions benefit from step-by-step guidance
+                var steps = SolutionParser.ParseIntoSteps(result.Steps);
+                if (steps.Count >= 4)
+                {
+                    reasons.Add("complex multi-step solution");
+                    score += 1;
+                }
+
+                // CRITERIA 3: Anomalous errors need careful handling
+                if (insights.IsAnomaly)
+                {
+                    reasons.Add("unusual error pattern detected");
+                    score += 2;
+                }
+
+                // CRITERIA 4: Conflicting solutions need guided decision making
+                if (result.HasConflicts)
+                {
+                    reasons.Add("conflicting solution feedback exists");
+                    score += 1;
+                }
+
+                // CRITERIA 5: New error types with no feedback
+                if (result.FeedbackCount == 0)
+                {
+                    reasons.Add("unvalidated solution");
+                    score += 1;
+                }
+
+                // CRITERIA 6: Certain error categories that benefit from interactive approach
+                var category = CategorizeError(errorInput);
+                if (category == "network" || category == "security" || category == "performance")
+                {
+                    reasons.Add($"{category} issues often need diagnostic steps");
+                    score += 1;
+                }
+
+                // CRITERIA 7: ML predictions suggest difficulty
+                if (insights.NeuralPrediction?.WillWork == false && insights.NeuralPrediction.Confidence > 0.7)
+                {
+                    reasons.Add("ML predicts solution may not work");
+                    score += 2;
+                }
+
+                // DETERMINE RECOMMENDATION LEVEL
+                if (score >= 4)
+                {
+                    // AUTO-LAUNCH for high-score cases
+                    recommendation.ShouldUseTree = true;
+                    recommendation.AutoLaunch = true;
+                    recommendation.RecommendationText = $"🌳 AUTO-LAUNCHING INTERACTIVE GUIDE: Multiple factors suggest step-by-step troubleshooting would be beneficial ({string.Join(", ", reasons)}).";
+                    recommendation.ButtonText = "🌳 Interactive Guide (Auto-launching...)";
+                }
+                else if (score >= 2)
+                {
+                    // RECOMMEND but don't auto-launch
+                    recommendation.ShouldUseTree = true;
+                    recommendation.AutoLaunch = false;
+                    recommendation.RecommendationText = $"🌳 RECOMMENDED: Interactive troubleshooting tree suggested due to {string.Join(", ", reasons)}. Click the tree button for guided step-by-step help.";
+                    recommendation.ButtonText = "🌳 Recommended: Interactive Guide";
+                }
+                else if (score >= 1)
+                {
+                    // AVAILABLE but not strongly recommended
+                    recommendation.ShouldUseTree = true;
+                    recommendation.AutoLaunch = false;
+                    recommendation.RecommendationText = "🌳 Interactive troubleshooting tree available for step-by-step guidance.";
+                    recommendation.ButtonText = "🌳 Interactive Troubleshooting";
+                }
+
+                System.Diagnostics.Debug.WriteLine($"Tree evaluation: Score={score}, Reasons=[{string.Join(", ", reasons)}], AutoLaunch={recommendation.AutoLaunch}");
+
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Tree evaluation failed: {ex.Message}");
+            }
+
+            return recommendation;
+        }
+
+        /// <summary>
+        /// LAUNCH INTERACTIVE TREE - Opens the interactive troubleshooting window
+        /// </summary>
+        private async Task LaunchInteractiveTreeAsync(string errorHash, string errorText, SolutionResult relatedResult = null)
+        {
+            try
+            {
+                await Task.Run(() =>
+                {
+                    Application.Current.Dispatcher.Invoke(() =>
+                    {
+                        var treeWindow = new SolutionTreeWindow(errorHash, errorText);
+
+                        // If we have a related result, we could pass additional context
+                        if (relatedResult != null)
+                        {
+                            treeWindow.Title = $"Interactive Troubleshooting - {relatedResult.Source} (Confidence: {relatedResult.Confidence:P0})";
+                        }
+
+                        treeWindow.Show(); // Use Show() instead of ShowDialog() so user can keep main window open
+                    });
+                });
+
+                System.Diagnostics.Debug.WriteLine("Interactive tree launched successfully");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Failed to launch interactive tree: {ex.Message}");
+                MessageBox.Show($"Could not launch interactive troubleshooting: {ex.Message}",
+                               "Tree Launch Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+            }
+        }
+
+        /// <summary>
+        /// ENHANCED INTERACTIVE TREE BUTTON - Now context-aware
+        /// </summary>
+        private async void BtnInteractiveTree_Click(object sender, RoutedEventArgs e)
+        {
+            if (string.IsNullOrEmpty(currentSolutionHash))
+            {
+                // No current solution - use error input directly
+                if (string.IsNullOrEmpty(ErrorInput.Text))
+                {
+                    MessageBox.Show("Please search for an error first to use interactive troubleshooting.",
+                        "No Error Selected", MessageBoxButton.OK, MessageBoxImage.Information);
+                    return;
+                }
+
+                // Generate hash from current input
+                var sig = Normalize(ErrorInput.Text);
+                var hash = Sha256Hex(sig);
+                await LaunchInteractiveTreeAsync(hash, ErrorInput.Text);
+            }
+            else
+            {
+                // Use current solution context
+                await LaunchInteractiveTreeAsync(currentSolutionHash, ErrorInput.Text);
+            }
+
+            // Reset button text after use
+            BtnInteractiveTree.Content = "🌳 Interactive Tree";
+        }
+
+        /// <summary>
+        /// Helper class for tree recommendations
+        /// </summary>
+        public class TreeRecommendation
+        {
+            public bool ShouldUseTree { get; set; }
+            public bool AutoLaunch { get; set; }
+            public string RecommendationText { get; set; }
+            public string ButtonText { get; set; } = "🌳 Interactive Tree";
+        }
+
+        /// <summary>
+        /// ML PREPROCESSING - Runs all ML analysis before main search
+        /// </summary>
+        private async Task<MLInsights> PerformMLPreprocessingAsync(string cleanErrorInput, double[] features, string sig)
+        {
+            var insights = new MLInsights();
+
+            if (mlEngine == null)
+            {
+                insights.MLAvailable = false;
+                return insights;
+            }
+
+            try
+            {
+                // ANOMALY DETECTION
+                insights.IsAnomaly = await mlEngine.IsAnomalyAsync(features);
+                if (insights.IsAnomaly)
+                {
+                    System.Diagnostics.Debug.WriteLine("🚨 ANOMALY DETECTED: This error pattern is unusual");
+                }
+
+                // TREND PREDICTION
+                var errorCategory = CategorizeError(sig);
+                var (predictedCount, trendConfidence) = await mlEngine.PredictErrorTrendAsync(errorCategory, 1);
+                insights.TrendPrediction = new TrendPrediction
+                {
+                    Category = errorCategory,
+                    PredictedNextHourCount = predictedCount,
+                    Confidence = trendConfidence
+                };
+
+                // NEURAL NETWORK PREDICTION
+                if (isNeuralNetworkTrained)
+                {
+                    var (nnConfidence, willWork) = await PredictWithNeuralNetworkAsync(features);
+                    insights.NeuralPrediction = new NeuralPrediction
+                    {
+                        WillWork = willWork,
+                        Confidence = nnConfidence
+                    };
+                }
+
+                // CLUSTER ANALYSIS
+                var (template, clusterConfidence) = await mlEngine.GetClusterRecommendationAsync(features);
+                insights.ClusterRecommendation = new ClusterRecommendation
+                {
+                    Template = template,
+                    Confidence = clusterConfidence
+                };
+
+                insights.MLAvailable = true;
+                System.Diagnostics.Debug.WriteLine($"ML preprocessing complete - Anomaly: {insights.IsAnomaly}, Trend confidence: {trendConfidence:P0}");
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ML preprocessing failed: {ex.Message}");
+                insights.MLAvailable = false;
+            }
+
+            return insights;
+        }
+
+        /// <summary>
+        /// COMPREHENSIVE ML SEARCH - Uses all ML capabilities for solution prediction
+        /// </summary>
+        private async Task<SolutionResult> ComprehensiveMLSearchAsync(string cleanErrorInput, string hash, double[] features)
+        {
+            if (mlEngine == null) return null;
+
+            try
+            {
+                // STEP 1: GET ALL ML PREDICTIONS
+                var (willWork, solutionConfidence) = await mlEngine.PredictSolutionSuccessAsync(features);
+                var (template, clusterConfidence) = await mlEngine.GetClusterRecommendationAsync(features);
+
+                // STEP 2: NEURAL NETWORK PREDICTION
+                double neuralConfidence = 0.5;
+                if (isNeuralNetworkTrained)
+                {
+                    var (nnConf, nnWillWork) = await PredictWithNeuralNetworkAsync(features);
+                    neuralConfidence = nnConf;
+                }
+
+                // STEP 3: COMBINE ALL ML PREDICTIONS
+                var combinedConfidence = CombinePredictions(solutionConfidence, clusterConfidence, neuralConfidence);
+
+                if (!string.IsNullOrEmpty(template) && combinedConfidence > 0.4)
+                {
+                    return new SolutionResult
+                    {
+                        Steps = template,
+                        Hash = hash,
+                        Source = "comprehensive_ml",
+                        Confidence = combinedConfidence,
+                        SuccessRate = willWork ? combinedConfidence : 1 - combinedConfidence,
+                        FeedbackCount = 0,
+                        HasConflicts = false,
+                        Version = "ML-2.0"
+                    };
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Comprehensive ML search failed: {ex.Message}");
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// ML-ENHANCED VECTOR SEARCH - Combines vector similarity with neural network predictions
+        /// </summary>
+        private async Task<SolutionResult> TryMLEnhancedVectorMatchAsync(string rawError, string[] likeTokens, double[] features)
+        {
+            try
+            {
+                // Standard fuzzy-enhanced vector search
+                var baseResult = await TryEnhancedVectorMatchAsync(rawError, likeTokens);
+
+                if (baseResult != null && mlEngine != null)
+                {
+                    // Enhance with neural network prediction
+                    if (isNeuralNetworkTrained)
+                    {
+                        var (nnConfidence, nnWillWork) = await PredictWithNeuralNetworkAsync(features);
+
+                        // Adjust confidence based on neural network prediction
+                        var adjustedConfidence = (baseResult.Confidence * 0.7) + (nnConfidence * 0.3);
+
+                        baseResult.Confidence = adjustedConfidence;
+                        baseResult.Source = "ml_enhanced_vector";
+                    }
+                }
+
+                return baseResult;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ML-enhanced vector search failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// ENHANCE RESULTS WITH ML - Applies ML analysis to improve result confidence
+        /// </summary>
+        private async Task<SolutionResult> EnhanceResultWithMLAsync(SolutionResult result, double[] features, MLInsights insights)
+        {
+            if (result == null || !insights.MLAvailable) return result;
+
+            try
+            {
+                // Apply neural network confidence adjustment
+                if (insights.NeuralPrediction != null)
+                {
+                    var mlWeight = 0.3; // 30% ML influence
+                    result.Confidence = (result.Confidence * (1 - mlWeight)) + (insights.NeuralPrediction.Confidence * mlWeight);
+                }
+
+                // Apply anomaly detection
+                if (insights.IsAnomaly)
+                {
+                    result.Confidence *= 0.8; // Reduce confidence for anomalous errors
+                }
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ML result enhancement failed: {ex.Message}");
+                return result;
+            }
+        }
+
+        /// <summary>
+        /// BETTER SOLUTION SELECTION WITH ML - Uses ML insights to pick best solution
+        /// </summary>
+        private SolutionResult SelectBestSolutionWithML(List<SolutionResult> results, MLInsights insights)
+        {
+            if (results.Count == 0) return null;
+
+            // Apply ML-enhanced ranking
+            foreach (var result in results)
+            {
+                var mlBonus = 0.0;
+
+                // Bonus for neural network agreement
+                if (insights.NeuralPrediction?.WillWork == true && insights.NeuralPrediction.Confidence > 0.7)
+                {
+                    mlBonus += 0.1;
+                }
+
+                // Penalty for anomalous errors (be more cautious)
+                if (insights.IsAnomaly)
+                {
+                    mlBonus -= 0.05;
+                }
+
+                result.Confidence += mlBonus;
+            }
+
+            // Select best result with ML adjustments
+            return results
+                .Where(r => !string.IsNullOrWhiteSpace(r.Steps))
+                .OrderByDescending(r => r.Confidence)
+                .ThenByDescending(r => r.SuccessRate)
+                .ThenByDescending(r => r.FeedbackCount)
+                .FirstOrDefault();
+        }
+
+        /// <summary>
+        /// Helper classes for ML insights
+        /// </summary>
+        public class MLInsights
+        {
+            public bool MLAvailable { get; set; }
+            public bool IsAnomaly { get; set; }
+            public TrendPrediction TrendPrediction { get; set; }
+            public NeuralPrediction NeuralPrediction { get; set; }
+            public ClusterRecommendation ClusterRecommendation { get; set; }
+        }
+
+        public class TrendPrediction
+        {
+            public string Category { get; set; }
+            public double PredictedNextHourCount { get; set; }
+            public double Confidence { get; set; }
+        }
+
+        public class NeuralPrediction
+        {
+            public bool WillWork { get; set; }
+            public double Confidence { get; set; }
+        }
+
+        public class ClusterRecommendation
+        {
+            public string Template { get; set; }
+            public double Confidence { get; set; }
+        }
+
+        /// <summary>
+        /// Generate ML insights text for display
+        /// </summary>
+        private string GenerateMLInsightsText(MLInsights insights)
+        {
+            if (!insights.MLAvailable) return "";
+
+            var mlText = new List<string>();
+
+            // Anomaly detection
+            if (insights.IsAnomaly)
+            {
+                mlText.Add("🚨 ANOMALY DETECTED: This error pattern is unusual and may need special attention");
+            }
+
+            // Trend prediction
+            if (insights.TrendPrediction?.Confidence > 0.7)
+            {
+                mlText.Add($"📊 TREND ANALYSIS: This type of error ({insights.TrendPrediction.Category}) is predicted to occur ~{insights.TrendPrediction.PredictedNextHourCount:F0} times in the next hour");
+            }
+
+            // Neural network insights
+            if (insights.NeuralPrediction?.Confidence > 0.7)
+            {
+                var prediction = insights.NeuralPrediction.WillWork ? "likely to work" : "may need alternatives";
+                mlText.Add($"🧠 NEURAL PREDICTION: Solutions for this error are {prediction} (confidence: {insights.NeuralPrediction.Confidence:P0})");
+            }
+
+            return mlText.Any() ? string.Join("\n", mlText) : "";
+        }
+
+        /// <summary>
+        /// Enhanced confidence text with ML insights
+        /// </summary>
+        private string GetMLEnhancedConfidenceText(SolutionResult result, MLInsights insights)
+        {
+            var baseText = GetEnhancedConfidenceText(result);
+
+            if (insights.IsAnomaly)
+            {
+                baseText += " ⚠️ Anomalous error - exercise caution";
+            }
+
+            if (insights.NeuralPrediction?.Confidence > 0.8)
+            {
+                baseText += $" 🧠 Neural network: {insights.NeuralPrediction.Confidence:P0} confidence";
+            }
+
+            return baseText;
+        }
+
+        /// <summary>
+        /// Generate ML-enhanced suggestions when no match found
+        /// </summary>
+        private async Task<string> GenerateMLEnhancedSuggestions(string cleanErrorInput, double[] features, MLInsights insights)
+        {
+            var suggestions = new List<string>();
+
+            // Add base fuzzy suggestions
+            var baseSuggestions = await GenerateSearchSuggestions(cleanErrorInput);
+            if (!string.IsNullOrEmpty(baseSuggestions))
+            {
+                suggestions.Add(baseSuggestions);
+            }
+
+            // Add ML-specific suggestions
+            if (insights.IsAnomaly)
+            {
+                suggestions.Add("🚨 This appears to be an unusual error. Consider consulting domain experts or checking for recent system changes.");
+            }
+
+            if (insights.ClusterRecommendation?.Confidence > 0.5 && !string.IsNullOrEmpty(insights.ClusterRecommendation.Template))
+            {
+                suggestions.Add($"🎯 ML SUGGESTION: Try this approach based on similar error patterns:\n{insights.ClusterRecommendation.Template}");
+            }
+
+            return suggestions.Any() ? string.Join("\n\n", suggestions) : "";
+        }
+
+        /// <summary>
+        /// Enhanced confidence display with fuzzy search insights
+        /// </summary>
+        private string GetEnhancedConfidenceText(SolutionResult result)
+        {
+            var baseText = GetConfidenceText(result); // Use existing method
+
+            // Add fuzzy search specific information
+            var enhancementInfo = result.Source switch
+            {
+                "enhanced_fuzzy_keyword" => " | Enhanced with synonym expansion and N-gram analysis",
+                "enhanced_fuzzy_search" => " | Comprehensive fuzzy matching with multiple similarity metrics",
+                "enhanced_vector_fuzzy" => " | AI semantic analysis with fuzzy preprocessing",
+                _ => ""
+            };
+
+            return baseText + enhancementInfo;
+        }
+
+        /// <summary>
+        /// Enhanced search source information
+        /// </summary>
+        private string GetEnhancedSearchSourceInfo(string source)
+        {
+            return source switch
+            {
+                "exact_match" => "✅ Found: Exact match from knowledge base",
+                "enhanced_fuzzy_keyword" => "🔍 Found: Enhanced fuzzy keyword search (synonyms + N-grams)",
+                "enhanced_fuzzy_search" => "🎯 Found: Comprehensive fuzzy analysis (multiple similarity metrics)",
+                "enhanced_vector_fuzzy" => "🤖 Found: AI similarity with fuzzy preprocessing",
+                "pattern_match" => "📋 Found: Pattern recognition match",
+                "ml_prediction" => "🧠 Found: Machine learning prediction",
+                "openai_enhanced" => "🧠 Generated: AI consultation with context",
+                _ => "📚 Found: Database search"
+            };
+        }
+
+        /// <summary>
+        /// Provides insights about the search method used
+        /// </summary>
+        private string GetSearchMethodInsights(string source, int totalSearchLayers)
+        {
+            var insights = source switch
+            {
+                "enhanced_fuzzy_keyword" => "Used synonym expansion to match related terms and N-gram analysis for partial matching",
+                "enhanced_fuzzy_search" => "Applied comprehensive fuzzy matching with Levenshtein distance and N-gram similarity",
+                "enhanced_vector_fuzzy" => "Combined AI semantic understanding with fuzzy text matching for optimal accuracy",
+                "exact_match" => "Perfect match found immediately - highest reliability",
+                "pattern_match" => "Recognized common error pattern",
+                "ml_prediction" => "Machine learning models predicted this solution based on error characteristics",
+                _ => "Standard database search"
+            };
+
+            return $"🔬 Method: {insights} (Searched {totalSearchLayers} layer{(totalSearchLayers > 1 ? "s" : "")})";
+        }
+
+        /// <summary>
+        /// Generate search suggestions based on fuzzy analysis
+        /// </summary>
+        private async Task<string> GenerateSearchSuggestions(string cleanErrorInput)
+        {
+            try
+            {
+                // Use fuzzy search to find partial matches and suggest alternatives
+                var suggestions = new List<string>();
+
+                // Get synonym expansions
+                var synonyms = fuzzySearch.ExpandWithSynonyms(cleanErrorInput);
+                if (synonyms.Count > 1) // More than just the original term
+                {
+                    var alternativeTerms = synonyms.Take(3).Where(s => s != cleanErrorInput.ToLower()).ToList();
+                    if (alternativeTerms.Any())
+                    {
+                        suggestions.Add($"Try alternative terms: {string.Join(", ", alternativeTerms)}");
+                    }
+                }
+
+                // Check for common typos or variations
+                await Task.Run(() =>
+                {
+                    try
+                    {
+                        using (var conn = OpenConn())
+                        {
+                            // Find errors with similar keywords that might be variations
+                            var tokens = Tokens(cleanErrorInput);
+                            if (tokens.Length > 0)
+                            {
+                                var mainToken = tokens[0];
+                                var sql = $@"
+                            SELECT DISTINCT error_signature 
+                            FROM {TableKB} 
+                            WHERE error_signature LIKE '%{SecureEscape(mainToken.Substring(0, Math.Min(mainToken.Length, 4)))}%'
+                            LIMIT 5";
+
+                                using (var cmd = new OdbcCommand(sql, conn))
+                                using (var rdr = cmd.ExecuteReader())
+                                {
+                                    var similarErrors = new List<string>();
+                                    while (rdr.Read())
+                                    {
+                                        var errorSig = rdr.GetString(0);
+                                        var similarity = fuzzySearch.GetNGramSimilarity(cleanErrorInput, errorSig);
+                                        if (similarity > 0.3 && similarity < 0.7) // Partial but not too similar
+                                        {
+                                            similarErrors.Add(errorSig.Length > 60 ? errorSig.Substring(0, 57) + "..." : errorSig);
+                                        }
+                                    }
+
+                                    if (similarErrors.Any())
+                                    {
+                                        suggestions.Add($"Similar errors found: {string.Join("; ", similarErrors.Take(2))}");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"Suggestion generation failed: {ex.Message}");
+                    }
+                });
+
+                return suggestions.Any() ? string.Join("\n", suggestions) : "";
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Search suggestions failed: {ex.Message}");
+                return "";
             }
         }
 
@@ -672,7 +1734,427 @@ namespace CAINE
                 BtnTeach.IsEnabled = true;
             }
         }
+        // Enhanced MainWindow.xaml.cs methods to better integrate FuzzySearchEngine
 
+        /// <summary>
+        /// ENHANCED KEYWORD SEARCH - Now uses fuzzy search with synonyms and N-gram matching
+        /// 
+        /// WHAT THIS DOES:
+        /// Instead of just exact keyword matching, this now:
+        /// 1. Expands search terms using synonyms (timeout -> timed out, hung, freeze)
+        /// 2. Uses fuzzy scoring to handle typos and variations
+        /// 3. Applies N-gram similarity for partial matches
+        /// 4. Combines all scores for better ranking
+        /// </summary>
+        private async Task<SolutionResult> TryEnhancedKeywordMatchAsync(string sig)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    using (var conn = OpenConn())
+                    {
+                        var bestResult = new SolutionResult();
+                        var bestScore = 0.0;
+
+                        // STEP 1: EXPAND WITH SYNONYMS
+                        // Get all possible variations of the search terms
+                        var expandedTerms = fuzzySearch.ExpandWithSynonyms(sig);
+                        System.Diagnostics.Debug.WriteLine($"Expanded terms: {string.Join(", ", expandedTerms)}");
+
+                        // STEP 2: SEARCH WITH MULTIPLE STRATEGIES
+                        // Try different combinations of expanded terms
+                        foreach (var expandedTerm in expandedTerms.Take(3)) // Limit to top 3 to avoid too many queries
+                        {
+                            var tokens = Tokens(expandedTerm);
+                            if (tokens.Length == 0) continue;
+
+                            // Build keyword search query
+                            var likeConditions = tokens.Select(t => $"LOWER(kb.error_signature) LIKE '%{SecureEscape(t.ToLower())}%'").ToArray();
+                            var whereClause = string.Join(" OR ", likeConditions); // Use OR for broader matching
+
+                            var sql = $@"
+                        SELECT kb.error_signature, kb.error_text, kb.resolution_steps, kb.error_hash,
+                               COALESCE(fb.success_rate, 0.5) as success_rate,
+                               COALESCE(fb.feedback_count, 0) as feedback_count
+                        FROM {TableKB} kb
+                        LEFT JOIN (
+                            SELECT solution_hash,
+                                   AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                                   COUNT(*) as feedback_count
+                            FROM {TableFeedback}
+                            GROUP BY solution_hash
+                        ) fb ON kb.error_hash = fb.solution_hash
+                        WHERE {whereClause}
+                        ORDER BY fb.success_rate DESC, kb.created_at DESC
+                        LIMIT 20"; // Get more candidates for scoring
+
+                            using (var cmd = new OdbcCommand(sql, conn))
+                            using (var rdr = cmd.ExecuteReader())
+                            {
+                                while (rdr.Read())
+                                {
+                                    var errorSig = rdr.GetString(0);
+                                    var errorText = rdr.GetString(1);
+                                    var steps = ConvertArrayToString(rdr.GetValue(2));
+                                    var hash = rdr.GetString(3);
+                                    var successRate = rdr.GetDouble(4);
+                                    var feedbackCount = rdr.GetInt32(5);
+
+                                    // STEP 3: CALCULATE COMPREHENSIVE FUZZY SCORE
+                                    // Combine multiple scoring methods for better accuracy
+                                    var fuzzyScore = fuzzySearch.CalculateFuzzyScore(sig, errorSig);
+                                    var ngramScore = fuzzySearch.GetNGramSimilarity(sig, errorSig, 3);
+                                    var textFuzzyScore = fuzzySearch.CalculateFuzzyScore(sig, errorText);
+
+                                    // STEP 4: WEIGHTED SCORING SYSTEM
+                                    // Combine different similarity metrics with user feedback
+                                    var combinedSimilarity = (fuzzyScore * 0.5) + (ngramScore * 0.3) + (textFuzzyScore * 0.2);
+                                    var feedbackBonus = successRate > 0.7 ? 0.2 : 0.0; // Bonus for high success rate
+                                    var finalScore = combinedSimilarity + feedbackBonus;
+
+                                    System.Diagnostics.Debug.WriteLine($"Candidate: {errorSig.Substring(0, Math.Min(50, errorSig.Length))}...");
+                                    System.Diagnostics.Debug.WriteLine($"  Fuzzy: {fuzzyScore:F3}, N-gram: {ngramScore:F3}, Text: {textFuzzyScore:F3}");
+                                    System.Diagnostics.Debug.WriteLine($"  Combined: {combinedSimilarity:F3}, Final: {finalScore:F3}");
+
+                                    // STEP 5: TRACK THE BEST MATCH
+                                    // Keep the highest scoring result
+                                    if (finalScore > bestScore && finalScore > 0.4) // Minimum threshold
+                                    {
+                                        bestScore = finalScore;
+                                        bestResult = new SolutionResult
+                                        {
+                                            Steps = steps,
+                                            Hash = hash,
+                                            Source = "enhanced_fuzzy_keyword",
+                                            SuccessRate = successRate,
+                                            FeedbackCount = feedbackCount,
+                                            HasConflicts = false,
+                                            Confidence = Math.Min(0.95, finalScore), // Cap confidence
+                                            Version = "1.0"
+                                        };
+                                    }
+                                }
+                            }
+                        }
+
+                        // Return best result if it meets minimum quality threshold
+                        return bestScore > 0.4 ? bestResult : null;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Enhanced fuzzy keyword match failed: {ex.Message}");
+                }
+                return null;
+            });
+        }
+
+        /// <summary>
+        /// ENHANCED FUZZY SEARCH - Improved version that uses all FuzzySearchEngine capabilities
+        /// 
+        /// WHAT THIS DOES:
+        /// 1. Uses synonym expansion to find more matches
+        /// 2. Applies both fuzzy and N-gram scoring
+        /// 3. Ranks results by combined similarity and user feedback
+        /// 4. Provides detailed scoring breakdown for transparency
+        /// </summary>
+        private async Task<SolutionResult> TryEnhancedFuzzySearchAsync(string cleanErrorInput)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    // STEP 1: EXPAND SEARCH TERMS WITH SYNONYMS
+                    var originalTerms = fuzzySearch.ExpandWithSynonyms(cleanErrorInput);
+                    System.Diagnostics.Debug.WriteLine($"Enhanced fuzzy search with {originalTerms.Count} synonym variations");
+
+                    using (var conn = OpenConn())
+                    {
+                        var candidates = new List<EnhancedFuzzyResult>();
+
+                        // STEP 2: GATHER CANDIDATES USING EXPANDED TERMS
+                        // Use broader search to get more candidates, then score them precisely
+                        var broadSearch = string.Join(" ", originalTerms.Take(2)); // Use top 2 synonym groups
+                        var tokens = Tokens(broadSearch);
+
+                        if (tokens.Length == 0) return null;
+
+                        var likeConditions = tokens.Select(t => $"LOWER(kb.error_text) LIKE '%{SecureEscape(t.ToLower())}%'").ToArray();
+                        var whereClause = string.Join(" OR ", likeConditions);
+
+                        var sql = $@"
+                    SELECT kb.error_hash, kb.error_text, kb.error_signature, kb.resolution_steps,
+                           COALESCE(fb.success_rate, 0.5) as success_rate,
+                           COALESCE(fb.feedback_count, 0) as feedback_count
+                    FROM {TableKB} kb
+                    LEFT JOIN (
+                        SELECT solution_hash,
+                               AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                               COUNT(*) as feedback_count
+                        FROM {TableFeedback}
+                        GROUP BY solution_hash
+                    ) fb ON kb.error_hash = fb.solution_hash
+                    WHERE {whereClause}
+                    ORDER BY kb.created_at DESC
+                    LIMIT 100"; // Get more candidates for better scoring
+
+                        using (var cmd = new OdbcCommand(sql, conn))
+                        using (var rdr = cmd.ExecuteReader())
+                        {
+                            while (rdr.Read())
+                            {
+                                var hash = rdr.GetString(0);
+                                var text = rdr.GetString(1);
+                                var signature = rdr.GetString(2);
+                                var steps = ConvertArrayToString(rdr.GetValue(3));
+                                var successRate = rdr.GetDouble(4);
+                                var feedbackCount = rdr.GetInt32(5);
+
+                                // STEP 3: COMPREHENSIVE SCORING
+                                // Apply all fuzzy search techniques for maximum accuracy
+                                candidates.Add(new EnhancedFuzzyResult
+                                {
+                                    Hash = hash,
+                                    Text = text,
+                                    Steps = steps,
+                                    SuccessRate = successRate,
+                                    FeedbackCount = feedbackCount,
+
+                                    // Multiple similarity scores
+                                    TextFuzzyScore = fuzzySearch.CalculateFuzzyScore(cleanErrorInput, text),
+                                    SignatureFuzzyScore = fuzzySearch.CalculateFuzzyScore(cleanErrorInput, signature),
+                                    TextNGramScore = fuzzySearch.GetNGramSimilarity(cleanErrorInput, text, 3),
+                                    SignatureNGramScore = fuzzySearch.GetNGramSimilarity(cleanErrorInput, signature, 3)
+                                });
+                            }
+                        }
+
+                        // STEP 4: ADVANCED SCORING AND RANKING
+                        foreach (var candidate in candidates)
+                        {
+                            // Weighted combination of all similarity metrics
+                            var textSimilarity = (candidate.TextFuzzyScore * 0.6) + (candidate.TextNGramScore * 0.4);
+                            var signatureSimilarity = (candidate.SignatureFuzzyScore * 0.6) + (candidate.SignatureNGramScore * 0.4);
+
+                            // Overall similarity (favor text matches over signature matches)
+                            candidate.CombinedSimilarity = (textSimilarity * 0.7) + (signatureSimilarity * 0.3);
+
+                            // User feedback bonus
+                            var feedbackWeight = Math.Min(1.0, candidate.FeedbackCount / 10.0); // Max weight at 10 feedback
+                            var feedbackBonus = candidate.SuccessRate * feedbackWeight * 0.2; // Up to 20% bonus
+
+                            // Final score
+                            candidate.FinalScore = candidate.CombinedSimilarity + feedbackBonus;
+                        }
+
+                        // STEP 5: SELECT BEST RESULT
+                        var best = candidates
+                            .Where(c => c.FinalScore > 0.5) // Minimum quality threshold
+                            .OrderByDescending(c => c.FinalScore)
+                            .FirstOrDefault();
+
+                        if (best != null)
+                        {
+                            System.Diagnostics.Debug.WriteLine($"Enhanced fuzzy match found:");
+                            System.Diagnostics.Debug.WriteLine($"  Text fuzzy: {best.TextFuzzyScore:F3}, N-gram: {best.TextNGramScore:F3}");
+                            System.Diagnostics.Debug.WriteLine($"  Signature fuzzy: {best.SignatureFuzzyScore:F3}, N-gram: {best.SignatureNGramScore:F3}");
+                            System.Diagnostics.Debug.WriteLine($"  Final score: {best.FinalScore:F3}");
+
+                            return new SolutionResult
+                            {
+                                Steps = best.Steps,
+                                Hash = best.Hash,
+                                Source = "enhanced_fuzzy_search",
+                                Confidence = Math.Min(0.95, best.FinalScore),
+                                SuccessRate = best.SuccessRate,
+                                FeedbackCount = best.FeedbackCount,
+                                HasConflicts = false,
+                                Version = "1.0"
+                            };
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Enhanced fuzzy search failed: {ex.Message}");
+                }
+
+                return null;
+            });
+        }
+
+        /// <summary>
+        /// Helper class for enhanced fuzzy search results
+        /// </summary>
+        private class EnhancedFuzzyResult
+        {
+            public string Hash { get; set; }
+            public string Text { get; set; }
+            public string Steps { get; set; }
+            public double SuccessRate { get; set; }
+            public int FeedbackCount { get; set; }
+
+            public double TextFuzzyScore { get; set; }
+            public double SignatureFuzzyScore { get; set; }
+            public double TextNGramScore { get; set; }
+            public double SignatureNGramScore { get; set; }
+
+            public double CombinedSimilarity { get; set; }
+            public double FinalScore { get; set; }
+        }
+
+        /// <summary>
+        /// ENHANCED VECTOR SEARCH - Now uses fuzzy search for preprocessing
+        /// 
+        /// WHAT THIS DOES:
+        /// 1. Uses fuzzy search to expand the query terms before vector search
+        /// 2. Combines vector similarity with fuzzy scoring
+        /// 3. Provides better ranking by considering multiple factors
+        /// </summary>
+        private async Task<SolutionResult> TryEnhancedVectorMatchAsync(string rawError, string[] likeTokens)
+        {
+            try
+            {
+                // STEP 1: EXPAND QUERY WITH FUZZY SEARCH
+                var expandedTerms = fuzzySearch.ExpandWithSynonyms(rawError);
+                var enhancedQuery = string.Join(" ", expandedTerms.Take(3)); // Use top 3 expansions
+
+                // STEP 2: CREATE AI FINGERPRINT OF ENHANCED QUERY
+                var queryEmb = await EmbedAsync(enhancedQuery);
+
+                // STEP 3: SEARCH WITH BOTH ORIGINAL AND EXPANDED TERMS
+                var pageSize = 100;
+                var candidates = new List<(string Steps, float[] Emb, string Hash, double SuccessRate, int FeedbackCount, bool HasConflicts, string ErrorText)>();
+
+                // Get candidates using expanded search terms
+                var expandedTokens = Tokens(enhancedQuery);
+                for (int page = 0; page < 2; page++) // Limit pages for performance
+                {
+                    var pageCandidates = await GetEnhancedVectorCandidatesPage(expandedTokens, rawError, page, pageSize);
+                    candidates.AddRange(pageCandidates);
+
+                    if (pageCandidates.Count < pageSize) break;
+                }
+
+                if (candidates.Count == 0) return null;
+
+                // STEP 4: ENHANCED SCORING WITH FUZZY + VECTOR SIMILARITY
+                NormalizeInPlace(queryEmb);
+                SolutionResult bestResult = null;
+                double bestScore = -1;
+
+                foreach (var c in candidates)
+                {
+                    // Vector similarity
+                    var e = c.Emb;
+                    NormalizeInPlace(e);
+                    var vectorSimilarity = Cosine(queryEmb, e);
+
+                    if (vectorSimilarity < VectorMinCosine) continue;
+
+                    // Fuzzy similarity
+                    var fuzzySimilarity = fuzzySearch.CalculateFuzzyScore(rawError, c.ErrorText);
+
+                    // Combined scoring
+                    var combinedSimilarity = (vectorSimilarity * 0.7) + (fuzzySimilarity * 0.3);
+                    var confidence = CalculateConfidence(c.SuccessRate, c.FeedbackCount, c.HasConflicts ? 0.4 : 0.1);
+                    var weightedScore = combinedSimilarity * (0.6 + confidence * 0.4);
+
+                    if (weightedScore > bestScore)
+                    {
+                        bestScore = weightedScore;
+                        bestResult = new SolutionResult
+                        {
+                            Steps = c.Steps,
+                            Hash = c.Hash,
+                            Source = "enhanced_vector_fuzzy",
+                            SuccessRate = c.SuccessRate,
+                            FeedbackCount = c.FeedbackCount,
+                            HasConflicts = c.HasConflicts,
+                            Confidence = confidence
+                        };
+                    }
+                }
+
+                return bestResult;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Enhanced vector fuzzy match failed: {ex.Message}");
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Enhanced vector candidate retrieval with fuzzy preprocessing
+        /// </summary>
+        private async Task<List<(string Steps, float[] Emb, string Hash, double SuccessRate, int FeedbackCount, bool HasConflicts, string ErrorText)>>
+            GetEnhancedVectorCandidatesPage(string[] likeTokens, string originalError, int page, int pageSize)
+        {
+            return await Task.Run(() =>
+            {
+                var list = new List<(string Steps, float[] Emb, string Hash, double SuccessRate, int FeedbackCount, bool HasConflicts, string ErrorText)>();
+
+                try
+                {
+                    string where = "";
+                    if (likeTokens != null && likeTokens.Length > 0)
+                    {
+                        var conditions = likeTokens.Select(t => $"(LOWER(kb.error_signature) LIKE '%{SecureEscape(t.ToLower())}%' OR LOWER(kb.error_text) LIKE '%{SecureEscape(t.ToLower())}%')");
+                        where = "WHERE " + string.Join(" OR ", conditions);
+                    }
+
+                    var sql = $@"
+                SELECT kb.resolution_steps, kb.embedding, kb.error_hash, kb.error_text,
+                       COALESCE(fb.success_rate, 0.5) as success_rate,
+                       COALESCE(fb.feedback_count, 0) as feedback_count,
+                       CASE WHEN COALESCE(fb.conflict_rate, 0.0) > {ConflictThreshold} THEN true ELSE false END as has_conflicts
+                FROM {TableKB} kb
+                LEFT JOIN (
+                    SELECT solution_hash,
+                           AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                           COUNT(*) as feedback_count,
+                           AVG(CASE WHEN was_helpful THEN 0.0 ELSE 1.0 END) as conflict_rate
+                    FROM {TableFeedback}
+                    GROUP BY solution_hash
+                ) fb ON kb.error_hash = fb.solution_hash
+                {where}
+                ORDER BY created_at DESC
+                LIMIT {pageSize} OFFSET {page * pageSize}";
+
+                    using (var conn = OpenConn())
+                    using (var cmd = new OdbcCommand(sql, conn))
+                    {
+                        using (var rdr = cmd.ExecuteReader())
+                        {
+                            while (rdr.Read())
+                            {
+                                var steps = rdr.IsDBNull(0) ? "" : ConvertArrayToString(rdr.GetValue(0));
+                                var embStr = rdr.IsDBNull(1) ? "" : rdr.GetString(1);
+                                var hash = rdr.IsDBNull(2) ? "" : rdr.GetString(2);
+                                var errorText = rdr.IsDBNull(3) ? "" : rdr.GetString(3);
+                                var successRate = rdr.GetDouble(4);
+                                var feedbackCount = rdr.GetInt32(5);
+                                var hasConflicts = rdr.GetBoolean(6);
+
+                                var emb = ParseFloatArray(embStr);
+                                if (emb.Length > 0)
+                                {
+                                    list.Add((steps, emb, hash, successRate, feedbackCount, hasConflicts, errorText));
+                                }
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Enhanced vector candidates failed: {ex.Message}");
+                }
+
+                return list;
+            });
+        }
         /// <summary>
         /// EXACT MATCH SEARCH - Look for errors we've seen exactly before
         /// 
@@ -938,164 +2420,10 @@ namespace CAINE
             });
         }
 
-        /// <summary>
-        /// AI SIMILARITY SEARCH - Find solutions using artificial intelligence
-        /// 
-        /// WHAT THIS DOES:
-        /// Uses AI embeddings (like AI fingerprints) to find errors that "mean the same thing"
-        /// even if they use different words
-        /// 
-        /// LIKE A SMART LIBRARIAN WHO UNDERSTANDS CONTEXT:
-        /// - "Database connection failed" and "Can't connect to SQL server" 
-        ///   might use different words but mean the same thing
-        /// - AI can recognize these similarities and suggest relevant solutions
-        /// - Combines similarity matching with user feedback to rank results
-        /// 
-        /// This is the most advanced search method but also the most powerful
-        /// </summary>
-        private async Task<SolutionResult> TryEnhancedVectorMatchAsync(string rawError, string[] likeTokens)
-        {
-            try
-            {
-                // STEP 1: CREATE AI FINGERPRINT OF THE NEW ERROR
-                var queryEmb = await EmbedAsync(rawError);
+   
 
-                // STEP 2: SEARCH THROUGH EXISTING SOLUTIONS IN BATCHES
-                // Process in pages to handle large knowledge bases efficiently
-                var pageSize = 100;
-                var candidates = new List<(string Steps, float[] Emb, string Hash, double SuccessRate, int FeedbackCount, bool HasConflicts)>();
-
-                // STEP 3: COLLECT CANDIDATE SOLUTIONS
-                // Search through multiple pages of potential matches
-                for (int page = 0; page < 3; page++)
-                {
-                    var pageCandidates = await GetVectorCandidatesPage(likeTokens, page, pageSize);
-                    candidates.AddRange(pageCandidates);
-
-                    if (pageCandidates.Count < pageSize) break; // No more results
-                }
-
-                if (candidates.Count == 0) return null;
-
-                // STEP 4: FIND THE BEST MATCH
-                // Compare the new error's AI fingerprint with all candidates
-                NormalizeInPlace(queryEmb);               // Standardize for comparison
-                SolutionResult bestResult = null;
-                double bestScore = -1;
-
-                foreach (var c in candidates)
-                {
-                    // CALCULATE AI SIMILARITY
-                    var e = c.Emb;
-                    NormalizeInPlace(e);                  // Standardize candidate fingerprint
-                    var cos = Cosine(queryEmb, e);       // Calculate similarity (0-100%)
-
-                    if (cos < VectorMinCosine) continue;  // Skip if not similar enough
-
-                    // COMBINE AI SIMILARITY WITH USER FEEDBACK
-                    // Create a weighted score that considers both AI similarity and user ratings
-                    var confidence = CalculateConfidence(c.SuccessRate, c.FeedbackCount, c.HasConflicts ? 0.4 : 0.1);
-                    var weightedScore = cos * (0.7 + confidence * 0.3);
-
-                    // TRACK THE BEST OPTION
-                    if (weightedScore > bestScore)
-                    {
-                        bestScore = weightedScore;
-                        bestResult = new SolutionResult
-                        {
-                            Steps = c.Steps,
-                            Hash = c.Hash,
-                            Source = "vector_similarity",
-                            SuccessRate = c.SuccessRate,
-                            FeedbackCount = c.FeedbackCount,
-                            HasConflicts = c.HasConflicts,
-                            Confidence = confidence
-                        };
-                    }
-                }
-
-                return bestResult;
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine($"Enhanced vector match failed: {ex.Message}");
-                return null;
-            }
-        }
-
-        /// <summary>
-        /// PAGINATION HELPER - Get chunks of similar solutions from database
-        /// 
-        /// WHAT THIS DOES:
-        /// When searching through thousands of solutions, this gets them in manageable chunks
-        /// Like reading a thick phone book one page at a time instead of all at once
-        /// 
-        /// INCLUDES PERFORMANCE OPTIMIZATION:
-        /// - Processes data in batches to avoid memory issues
-        /// - Joins with feedback data to get success ratings
-        /// - Returns both the solutions and their AI fingerprints for comparison
-        /// </summary>
-        private async Task<List<(string Steps, float[] Emb, string Hash, double SuccessRate, int FeedbackCount, bool HasConflicts)>>
-    GetVectorCandidatesPage(string[] likeTokens, int page, int pageSize)
-        {
-            return await Task.Run(() =>
-            {
-                var list = new List<(string Steps, float[] Emb, string Hash, double SuccessRate, int FeedbackCount, bool HasConflicts)>();
-
-                try
-                {
-                    string where = "";
-                    if (likeTokens != null && likeTokens.Length > 0)
-                    {
-                        var conditions = likeTokens.Select(t => $"kb.error_signature LIKE '%{SecureEscape(t)}%'");
-                        where = "WHERE " + string.Join(" OR ", conditions);
-                    }
-
-                    // ADD HINT FOR DISTRIBUTED EXECUTION
-                    var sql = $@"
-                /* +COALESCE(2) +REPARTITION(10) */  -- Databricks optimization hints
-                WITH distributed_search AS (
-                    SELECT /*+ BROADCAST(fb) */  -- Broadcast small feedback table
-                        kb.resolution_steps, 
-                        kb.embedding, 
-                        kb.error_hash,
-                        COALESCE(fb.success_rate, 0.5) as success_rate,
-                        COALESCE(fb.feedback_count, 0) as feedback_count,
-                        CASE WHEN COALESCE(fb.conflict_rate, 0.0) > {ConflictThreshold} THEN true ELSE false END as has_conflicts
-                    FROM {TableKB} kb
-                    LEFT JOIN (
-                        SELECT solution_hash,
-                               AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
-                               COUNT(*) as feedback_count,
-                               AVG(CASE WHEN was_helpful THEN 0.0 ELSE 1.0 END) as conflict_rate
-                        FROM {TableFeedback}
-                        GROUP BY solution_hash
-                    ) fb ON kb.error_hash = fb.solution_hash
-                    {where}
-                )
-                SELECT * FROM distributed_search
-                ORDER BY created_at DESC
-                LIMIT {pageSize} OFFSET {page * pageSize}";
-
-                    using (var conn = OpenConn())
-                    using (var cmd = new OdbcCommand(sql, conn))
-                    {
-                        cmd.CommandTimeout = 60; // Increase timeout for distributed execution
-
-                        using (var rdr = cmd.ExecuteReader())
-                        {
-                            // ... rest of your existing code
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    System.Diagnostics.Debug.WriteLine($"Distributed search failed: {ex.Message}");
-                }
-
-                return list;
-            });
-        }
+  
+     
 
         /// <summary>
         /// CONFIDENCE CALCULATOR - Determines how much to trust a solution
@@ -1563,22 +2891,7 @@ namespace CAINE
         /// Simple helper methods to turn the thumbs up/down buttons on and off
         /// Prevents users from rating the same solution multiple times
         /// </summary>
-        /// 
-        /// <summary>
-        /// Launch interactive troubleshooting tree
-        /// </summary>
-        private void BtnInteractiveTree_Click(object sender, RoutedEventArgs e)
-        {
-            if (string.IsNullOrEmpty(currentSolutionHash))
-            {
-                MessageBox.Show("Please search for an error first to use interactive troubleshooting.",
-                    "No Error Selected", MessageBoxButton.OK, MessageBoxImage.Information);
-                return;
-            }
-
-            var treeWindow = new SolutionTreeWindow(currentSolutionHash, ErrorInput.Text);
-            treeWindow.ShowDialog(); // Use ShowDialog to make it modal
-        }
+  
 
         // Also modify your BtnSearch_Click to enable the tree button when results found:
         // Add this line after "EnableFeedbackButtons();"
@@ -2554,41 +3867,58 @@ namespace CAINE
         {
             await Task.Run(() =>
             {
-                // Prepare training data
-                var inputs = trainingData.Select(d => d.Features).ToArray();
-                var targets = trainingData.Select(d => new double[]
+                try
                 {
-                    d.SolutionWorked ? 1.0 : 0.0,           // Success
-                    d.ResponseTime < 30 ? 1.0 : 0.0,        // Quick resolution
-                    d.ResponseTime > 60 ? 1.0 : 0.0         // Complex problem
-                }).ToArray();
+                    // Prepare training data
+                    var inputs = trainingData.Select(d => d.Features).ToArray();
+                    var targets = trainingData.Select(d => new double[]
+                    {
+                d.SolutionWorked ? 1.0 : 0.0,           // Success
+                d.ResponseTime < 30 ? 1.0 : 0.0,        // Quick resolution
+                d.ResponseTime > 60 ? 1.0 : 0.0         // Complex problem
+                    }).ToArray();
 
-                // Train the network
-                neuralNetwork.Train(inputs, targets, epochs: 500);
+                    // Train the network
+                    neuralNetwork.Train(inputs, targets, epochs: 500);
+
+                    // ADD THIS LINE:
+                    isNeuralNetworkTrained = true;  // Mark as trained
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Neural network training failed: {ex.Message}");
+                    isNeuralNetworkTrained = false;  // Mark as not trained
+                }
             });
         }
 
         /// <summary>
         /// PREDICT WITH NEURAL NETWORK - Get predictions from deep learning model
         /// </summary>
-        private async Task<(double Confidence, string Category)> PredictWithNeuralNetworkAsync(double[] features)
+        private async Task<(double Confidence, bool WillWork)> PredictWithNeuralNetworkAsync(double[] features)
         {
             return await Task.Run(() =>
             {
-                if (neuralNetwork == null)
-                    return (0.5, "unknown");
+                if (!isNeuralNetworkTrained || neuralNetwork == null)
+                    return (0.5, false); // Default if not trained
 
                 var output = neuralNetwork.Forward(features);
 
-                // Interpret outputs
+                // output[0] is probability of success, output[1] is probability of failure
                 double successProbability = output[0];
-                double quickResolutionProb = output[1];
-                double complexProblemProb = output[2];
+                double failureProbability = output[1];
 
-                string category = complexProblemProb > 0.7 ? "complex" :
-                                 quickResolutionProb > 0.7 ? "simple" : "moderate";
+                // Normalize if needed
+                double total = successProbability + failureProbability;
+                if (total > 0)
+                {
+                    successProbability /= total;
+                }
 
-                return (successProbability, category);
+                bool willWork = successProbability > 0.5;
+                double confidence = Math.Abs(successProbability - 0.5) * 2; // Convert to 0-1 confidence
+
+                return (confidence, willWork);
             });
         }
 
@@ -2706,6 +4036,22 @@ namespace CAINE
             }
 
             return 0;
+        }
+
+        private double CalculateResultConfidence(SolutionResult result, MLInsights insights = null)
+        {
+            var factors = new ConfidenceFactors
+            {
+                BaseSuccessRate = result.SuccessRate,
+                FeedbackCount = result.FeedbackCount,
+                ConflictRate = result.HasConflicts ? 0.4 : 0.0,
+                MLConfidence = insights?.NeuralPrediction?.Confidence,
+                IsAnomaly = insights?.IsAnomaly ?? false,
+                SolutionComplexity = SolutionParser.ParseIntoSteps(result.Steps).Count,
+                DaysOld = 0 // Would need to be calculated from result.LastUpdated if available
+            };
+
+            return UnifiedConfidenceCalculator.CalculateUnifiedConfidence(factors);
         }
 
         private double CalculateTextComplexity(string text)

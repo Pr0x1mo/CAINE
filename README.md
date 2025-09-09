@@ -1,26 +1,27 @@
-# CAINE - Computer-Aided Intelligence for Network Errors
+# CAINE - Computer-Aided Intelligence Neuro Enhancer
 
 ## What is CAINE?
 
 CAINE is an enterprise-grade intelligent error resolution system that combines traditional machine learning with modern AI to solve database and network errors. It learns from your organization's collective experience and improves with every use.
 
 ### Core Capabilities
-- **Multi-Layer Search**: 5 different search strategies from exact matching to ML predictions
-- **Machine Learning Engine**: SVM (88-96% accuracy), clustering, decision trees
-- **Fuzzy Search**: Handles typos and variations with Levenshtein distance
+- **Multi-Layer Search**: 6 different search strategies from exact matching to ML predictions
+- **Machine Learning Engine**: SVM (88-96% accuracy), clustering, decision trees, neural networks
+- **Fuzzy Search**: Handles typos and variations with Levenshtein distance and N-gram analysis
 - **Distributed Computing**: Leverages Databricks SQL Warehouse for scalability
-- **Interactive Troubleshooting**: Visual decision trees guide users to solutions
+- **Interactive Troubleshooting**: Visual decision trees with auto-launch capabilities
 - **Security First**: SQL injection protection, rate limiting, audit logging
 
 ## Version 3.0 - Full ML Enhancement
 
 ### What's New in v3.0
-- **GPU-Accelerated Neural Networks** (TorchSharp integration ready)
-- **Fuzzy Search Engine** with synonym matching and n-gram analysis
-- **Distributed Query Optimization** with Databricks hints
+- **GPU-Accelerated Neural Networks** (TorchSharp integration active)
+- **Auto-Launching Interactive Trees** based on ML confidence analysis
+- **Comprehensive Fuzzy Search Engine** with synonym matching and n-gram analysis
 - **Enhanced Security Layer** with intelligent error/attack discrimination
-- **Scalable Vector Search** with hierarchical indexing and caching
-- **Real-time Analytics Dashboard** with threat monitoring
+- **Scalable Vector Search** with LSH hashing and intelligent caching
+- **Real-time Analytics Dashboard** with ML performance metrics
+- **Unified Confidence Calculator** combining multiple ML predictions
 
 ### Machine Learning Components
 
@@ -28,13 +29,14 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 - **Support Vector Machines (SVM)**: 88-96% accuracy on error classification
 - **K-Means Clustering**: Automatically discovers error categories
 - **C4.5 Decision Trees**: Predicts solution effectiveness
+- **Neural Networks**: TorchSharp-powered deep learning with GPU acceleration
 - **Time Series Analysis**: Forecasts error trends and patterns
 - **Anomaly Detection**: Identifies new error types requiring attention
 
 #### ML Activation Thresholds
 - **< 50 samples**: Basic ML mode (clustering only)
 - **≥ 50 samples**: Full ML mode (all models active)
-- **≥ 100 samples**: Advanced features (neural networks when configured)
+- **≥ 100 samples**: Neural network training begins automatically
 
 ## System Architecture
 
@@ -48,12 +50,13 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 └──────────────┬──────────────────────┘
                ↓
 ┌──────────────────────────────────────┐
-│     Search & ML Pipeline             │
+│     6-Layer Search & ML Pipeline     │
 │  1. Exact Match (SHA256 hash)        │
-│  2. Fuzzy Search (Levenshtein)       │
-│  3. Keyword Search (tokenized)       │
-│  4. Vector Similarity (embeddings)   │
-│  5. ML Prediction (SVM/Trees)        │
+│  2. Enhanced Fuzzy Keyword Search    │
+│  3. Comprehensive Fuzzy Search       │
+│  4. Advanced Scalable Vector Search  │
+│  5. Pattern Recognition              │
+│  6. Comprehensive ML Search          │
 └──────────────┬───────────────────────┘
                ↓
 ┌─────────────────────────────────────┐
@@ -67,33 +70,41 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 
 ## Key Features
 
-### Search Capabilities
+### Advanced Search Capabilities
 - **Exact Match**: SHA256 hash-based instant lookup
-- **Fuzzy Search**: Tolerates typos and variations
-- **Synonym Expansion**: Understands "timeout" = "timed out" = "hung"
-- **Vector Similarity**: Semantic search using OpenAI embeddings
-- **Pattern Recognition**: ML-based pattern matching
+- **Enhanced Fuzzy Search**: Tolerates typos with multiple similarity metrics
+- **Synonym Expansion**: Understands "timeout" = "timed out" = "hung" = "freeze"
+- **N-gram Analysis**: Partial text matching for robust similarity detection
+- **Vector Similarity**: Semantic search using OpenAI embeddings with LSH indexing
+- **ML Pattern Recognition**: SVM and neural network-based pattern matching
+
+### Interactive Troubleshooting
+- **Auto-Launch Detection**: ML determines when guided troubleshooting is beneficial
+- **Decision Tree Visualization**: Full flowchart view of troubleshooting paths
+- **Step-by-Step Guidance**: Interactive yes/no questions leading to solutions
+- **Path Optimization**: ML learns which paths work best for different error types
+- **Success Tracking**: Records which troubleshooting paths lead to resolution
 
 ### Security Features
-- **SQL Injection Prevention**: Multi-layer validation
+- **Intelligent Input Validation**: Distinguishes error messages from actual attacks
+- **SQL Injection Prevention**: Multi-layer validation with context awareness
 - **Rate Limiting**: 1000 queries/day per user
 - **Input Sanitization**: XSS and command injection protection
-- **Audit Logging**: Complete security event tracking
-- **Intelligent Discrimination**: Distinguishes error messages from attacks
+- **Audit Logging**: Complete security event tracking with severity levels
 
 ### Learning System
 - **Feedback Loop**: Thumbs up/down ratings improve confidence
-- **Auto-retraining**: Models update with new data
+- **Auto-retraining**: Models update every 24 hours with new data
 - **Conflict Detection**: Identifies contradictory solutions
-- **Success Tracking**: Monitors solution effectiveness
-- **Adaptive Confidence**: Updates based on real-world results
+- **Success Tracking**: Monitors solution effectiveness across all search methods
+- **Unified Confidence**: Combines ML predictions, user feedback, and similarity scores
 
 ### Analytics Dashboard
-- **Real-time Metrics**: Solution count, success rates, active users
-- **Security Monitoring**: Threat detection and event tracking
-- **Performance Analytics**: Search strategy effectiveness
-- **Quality Distribution**: Solution quality metrics
-- **System Health**: Overall system status indicator
+- **Real-time Metrics**: Solution count, success rates, active users, security events
+- **ML Performance**: Model accuracy, confidence distributions, anomaly detection rates
+- **Search Strategy Analytics**: Effectiveness of each search layer
+- **Interactive Tree Metrics**: Success rates and usage patterns
+- **System Health**: Overall status with ML-enhanced monitoring
 
 ## Installation
 
@@ -102,6 +113,7 @@ CAINE is an enterprise-grade intelligent error resolution system that combines t
 - Visual Studio 2019 or later
 - Databricks account with SQL Warehouse
 - OpenAI API key
+- Optional: NVIDIA GPU for neural network acceleration
 
 ### Setup Steps
 
@@ -142,29 +154,37 @@ CAINE automatically creates these tables:
 ```sql
 -- Main knowledge base
 CREATE TABLE default.cai_error_kb (
-    error_hash STRING PRIMARY KEY,
+    id STRING,
+    error_hash STRING,
     error_signature STRING,
-    resolution_steps STRING,
+    error_text STRING,
+    resolution_steps ARRAY<STRING>,
+    embedding ARRAY<FLOAT>,
     confidence_score DOUBLE,
-    feedback_count INT,
     created_at TIMESTAMP,
     updated_at TIMESTAMP,
-    success_rate DOUBLE,
-    created_by STRING
+    source STRING,
+    notes STRING
 ) USING DELTA;
 
--- User feedback
+-- User feedback with enhanced tracking
 CREATE TABLE default.cai_solution_feedback (
     feedback_id STRING,
-    solution_hash STRING,
-    was_helpful BOOLEAN,
     session_id STRING,
+    solution_hash STRING,
+    solution_source STRING,
+    solution_version STRING,
+    was_helpful BOOLEAN,
+    confidence_rating DOUBLE,
+    user_comment STRING,
+    user_expertise STRING,
     created_at TIMESTAMP,
     error_signature STRING,
-    solution_source STRING
+    resolution_time_minutes INT,
+    environment_context STRING
 ) USING DELTA;
 
--- Vector index for similarity search
+-- Vector index for scalable similarity search
 CREATE TABLE default.cai_vector_index (
     index_id STRING,
     error_hash STRING,
@@ -173,6 +193,16 @@ CREATE TABLE default.cai_vector_index (
     lsh_hash_1 STRING,
     lsh_hash_2 STRING,
     created_at TIMESTAMP
+) USING DELTA;
+
+-- Vector caching for performance
+CREATE TABLE default.cai_vector_cache (
+    cache_key STRING,
+    query_hash STRING,
+    results_json STRING,
+    created_at TIMESTAMP,
+    hit_count INT,
+    last_accessed TIMESTAMP
 ) USING DELTA;
 
 -- Security audit log
@@ -186,7 +216,7 @@ CREATE TABLE default.cai_security_log (
     severity STRING
 ) USING DELTA;
 
--- Interactive tree paths
+-- Interactive tree paths with success tracking
 CREATE TABLE default.cai_tree_paths (
     path_id STRING,
     session_id STRING,
@@ -198,42 +228,58 @@ CREATE TABLE default.cai_tree_paths (
     created_at TIMESTAMP,
     created_by STRING
 ) USING DELTA;
+
+-- Pattern matching rules
+CREATE TABLE default.cai_error_patterns (
+    pattern_id STRING,
+    pattern_regex STRING,
+    priority INT,
+    resolution_steps ARRAY<STRING>,
+    created_at TIMESTAMP,
+    description STRING,
+    effectiveness_score DOUBLE,
+    usage_count INT,
+    last_successful_match TIMESTAMP
+) USING DELTA;
 ```
 
 ## Usage Guide
 
 ### Basic Workflow
 1. **Search**: Paste error → Click Search
-2. **Review**: Check confidence score and solution
-3. **Apply**: Follow the solution steps
-4. **Feedback**: Click 👍 or 👎 to rate effectiveness
-5. **Learn**: System improves based on feedback
+2. **ML Analysis**: System runs 6-layer search with ML preprocessing
+3. **Auto-Tree**: Interactive troubleshooting may launch automatically for complex errors
+4. **Review**: Check confidence score and ML insights
+5. **Apply**: Follow the solution steps
+6. **Feedback**: Click 👍 or 👎 to improve ML models
 
 ### Interactive Troubleshooting
-1. Click "🌳 Interactive" button
-2. Answer yes/no questions
-3. Follow guided path to solution
-4. View decision tree visualization
-5. Provide feedback on effectiveness
+- **Auto-Launch**: Triggered automatically for low-confidence or complex errors
+- **Manual Access**: Click "🌳 Interactive" button anytime
+- **Guided Process**: Answer yes/no questions through decision tree
+- **Visual Tree**: View full flowchart of troubleshooting paths
+- **ML Optimization**: System learns which paths work best
 
 ### Teaching New Solutions
 1. If no solution found, click "Teach CAINE"
 2. Enter step-by-step solution
-3. Submit to knowledge base
-4. Solution available for future searches
+3. System checks for conflicts with existing solutions
+4. ML models incorporate new knowledge automatically
 
 ### Using the API Fallback
-- "Use CAINE API" button available for all searches
-- Provides ChatGPT-powered alternative solutions
+- "Use CAINE API" button provides ChatGPT-powered solutions
+- Builds context from similar past solutions
 - Useful for comparing local vs AI solutions
+- Results can be taught back to the system
 
 ## Performance Metrics
 
-- **Search Speed**: < 500ms average response time
-- **Accuracy**: 88-96% SVM classification accuracy
-- **Scalability**: Handles 1000+ concurrent users
+- **Search Speed**: < 500ms average response time across 6 layers
+- **ML Accuracy**: 88-96% SVM classification accuracy
+- **Neural Network**: GPU-accelerated training and inference
+- **Scalability**: Handles 1000+ concurrent users with LSH indexing
 - **Learning Rate**: Improves 2-3% per 100 feedback entries
-- **Cache Hit Rate**: 60-70% for repeated queries
+- **Cache Hit Rate**: 60-70% for repeated queries with intelligent caching
 - **Confidence Growth**: 20% → 100% after ~10 positive feedbacks
 
 ## File Structure
@@ -244,14 +290,14 @@ CAINE/
 ├── CaineMLEngine.cs               # Machine learning models
 ├── FuzzySearchEngine.cs           # Fuzzy matching algorithms
 ├── InteractiveSolutionTree.cs     # Decision tree logic
+├── SolutionTreeWindow.xaml.cs     # Interactive UI window
 ├── TreeVisualizationControl.cs    # Visual tree rendering
+├── SolutionParser.cs              # Solution step parsing
+├── AnalyticsWindow.xaml.cs        # Dashboard and metrics
 ├── Security/
-│   └── SecurityValidator.cs      # Security layer
-├── Vector/
-│   └── ScalableVectorManager.cs  # Vector search engine
-├── Analytics/
-│   └── AnalyticsWindow.xaml.cs   # Dashboard
-└── SolutionTreeWindow.xaml.cs     # Interactive UI
+│   └── SecurityValidator.cs       # Security validation layer
+└── Vector/
+    └── ScalableVectorManager.cs   # Advanced vector search engine
 ```
 
 ## Troubleshooting
@@ -259,23 +305,30 @@ CAINE/
 ### Common Issues
 
 **Neural network not loading**
-- Install libtorch-cpu package
-- Or disable in CaineMLEngine.cs (SVM is sufficient at 88-96% accuracy)
+- TorchSharp will auto-detect GPU vs CPU
+- Falls back gracefully to SVM (88-96% accuracy sufficient)
+- Check CUDA installation for GPU acceleration
 
 **ODBC connection fails**
 - Verify Databricks SQL Warehouse is running
-- Check DSN configuration
+- Check DSN configuration in ODBC Data Sources
 - Ensure firewall allows connection
 
 **Low confidence scores**
-- Accumulate more feedback (50+ entries for full ML)
-- Check for conflicting solutions
-- Review error categorization
+- Need 50+ feedback entries for full ML activation
+- Check for conflicting solutions in Analytics Dashboard
+- Review error categorization patterns
 
-**Threading errors in feedback**
-- Non-critical UI threading issue
-- Feedback still records successfully
-- Fix pending in next release
+**Interactive trees not auto-launching**
+- Requires ML models to be trained (50+ samples)
+- Check ML insights in search results
+- Manual launch always available via button
+
+### Security Events
+Monitor the Analytics Dashboard for:
+- HIGH severity: SQL injection attempts blocked
+- MEDIUM severity: Rate limiting activated
+- INFO: Normal error analysis operations
 
 ## Contributing
 
@@ -287,7 +340,7 @@ CAINE/
 
 ## Version History
 
-- **v3.0** (2024) - Full ML enhancement with fuzzy search and distributed computing
+- **v3.0** (2024) - Full ML enhancement with neural networks, auto-launching trees, and advanced vector search
 - **v2.1** (2024) - Interactive troubleshooting with decision trees
 - **v2.0** (2024) - Machine learning integration
 - **v1.0** (2024) - Initial release with ChatGPT integration
@@ -295,15 +348,15 @@ CAINE/
 ## Future Roadmap
 
 - [ ] Web-based interface
-- [ ] Real-time log monitoring
-- [ ] Automated error capture from logs
-- [ ] Team collaboration features
-- [ ] Natural language queries
-- [ ] Predictive maintenance alerts
-- [ ] Integration with ticketing systems
-- [ ] Mobile companion app
-- [ ] Export/import knowledge bases
-- [ ] Multi-tenant support
+- [ ] Real-time log monitoring with ML anomaly detection
+- [ ] Automated error capture from system logs
+- [ ] Team collaboration features with shared knowledge bases
+- [ ] Natural language queries ("Find connection timeouts from last week")
+- [ ] Predictive maintenance alerts based on error trends
+- [ ] Integration with ticketing systems (Jira, ServiceNow)
+- [ ] Mobile companion app for on-call support
+- [ ] Export/import knowledge bases between organizations
+- [ ] Multi-tenant support with role-based access
 
 ## License
 
@@ -313,8 +366,9 @@ CAINE/
 
 For issues or questions:
 - Open an issue on GitHub
-- Contact your system administrator
 - Check the Analytics Dashboard for system health
+- Review security logs for blocked threats
+- Contact your system administrator
 
 ## Acknowledgments
 
@@ -326,4 +380,4 @@ For issues or questions:
 
 ---
 
-**Remember**: CAINE improves with every use. The more feedback you provide, the better it becomes at solving your specific problems. With 50+ feedback entries, full ML capabilities activate automatically!
+**Remember**: CAINE improves with every use. The more feedback you provide, the better it becomes at solving your specific problems. With 50+ feedback entries, full ML capabilities activate automatically, including neural networks and auto-launching interactive troubleshooting!

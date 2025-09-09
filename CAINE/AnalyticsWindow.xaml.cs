@@ -33,25 +33,123 @@ namespace CAINE
                 // Load all metrics in parallel for better performance
                 var tasks = new[]
                 {
-                    LoadKnowledgeBaseMetrics(),
-                    LoadFeedbackMetrics(),
-                    LoadUserActivityMetrics(),
-                    LoadSecurityMetrics(),
-                    LoadRecentActivity(),
-                    LoadSystemPerformance()
-                };
+            LoadKnowledgeBaseMetrics(),
+            LoadFeedbackMetrics(),
+            LoadUserActivityMetrics(),
+            LoadSecurityMetrics(),
+            LoadRecentActivity(),
+            LoadSystemPerformance(),
+            LoadMLInsightsAsync() // ADD THIS LINE
+        };
 
                 await Task.WhenAll(tasks);
 
-                // Update system health based on all metrics
                 UpdateSystemHealth();
                 UpdateLastUpdatedTime();
-
             }
             catch (Exception ex)
             {
                 UpdateErrorState($"Failed to load analytics: {ex.Message}");
             }
+        }
+        private async Task LoadMLInsightsAsync()
+        {
+            try
+            {
+                using (var conn = OpenConn())
+                {
+                    // ML Model Performance
+                    var mlPerformanceText = "ML Model Performance:\n\n";
+
+                    // [Your existing SQL queries code here...]
+
+                    // Get confidence accuracy 
+                    var confidenceAccuracySql = $@"
+                SELECT 
+                    CASE 
+                        WHEN confidence_rating >= 4 THEN 'High Confidence'
+                        WHEN confidence_rating >= 3 THEN 'Medium Confidence' 
+                        ELSE 'Low Confidence'
+                    END as confidence_level,
+                    AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as accuracy,
+                    COUNT(*) as sample_size
+                FROM {TableFeedback}
+                WHERE confidence_rating IS NOT NULL
+                GROUP BY 1
+                ORDER BY confidence_level";
+
+                    using (var cmd = new OdbcCommand(confidenceAccuracySql, conn))
+                    using (var rdr = cmd.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                        {
+                            var level = rdr.GetString(0);
+                            var accuracy = rdr.GetDouble(1);
+                            var samples = rdr.GetInt32(2);
+                            mlPerformanceText += $"{level}: {accuracy:P0} accuracy ({samples} samples)\n";
+                        }
+                    }
+
+                    // Search method effectiveness
+                    mlPerformanceText += "\nSearch Method Effectiveness (Last 7 Days):\n";
+                    var methodEffectivenessSql = $@"
+                SELECT 
+                    solution_source,
+                    AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,
+                    COUNT(*) as usage_count
+                FROM {TableFeedback}
+                WHERE created_at >= current_timestamp() - INTERVAL 7 DAYS
+                GROUP BY solution_source
+                ORDER BY success_rate DESC";
+
+                    using (var cmd = new OdbcCommand(methodEffectivenessSql, conn))
+                    using (var rdr = cmd.ExecuteReader())
+                    {
+                        while (rdr.Read())
+                        {
+                            var source = rdr.GetString(0);
+                            var successRate = rdr.GetDouble(1);
+                            var count = rdr.GetInt32(2);
+                            var methodName = GetFriendlyMethodName(source);
+                            mlPerformanceText += $"{methodName}: {successRate:P0} success ({count} uses)\n";
+                        }
+                    }
+
+                    // Update UI - use existing TextBlock or append to existing content
+                    Dispatcher.Invoke(() =>
+                    {
+                        // CHOOSE ONE OF THESE OPTIONS:
+
+                        // Option A: Replace existing search strategy text
+                        SearchStrategyText.Text = mlPerformanceText;
+
+                        // Option B: Append to existing search strategy text
+                        // SearchStrategyText.Text += "\n\n=== ML INSIGHTS ===\n" + mlPerformanceText;
+
+                        // Option C: Use quality distribution text instead
+                        // QualityDistributionText.Text = mlPerformanceText;
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"ML insights loading failed: {ex.Message}");
+            }
+        }
+
+        private string GetFriendlyMethodName(string source)
+        {
+            return source switch
+            {
+                "exact_match" => "Exact Hash Match",
+                "enhanced_fuzzy_keyword" => "Fuzzy Keyword Search",
+                "enhanced_fuzzy_search" => "Comprehensive Fuzzy",
+                "advanced_scalable_vector" => "AI Vector Similarity",
+                "pattern_match" => "Pattern Recognition",
+                "comprehensive_ml" => "ML Prediction",
+                "openai_enhanced" => "AI Generated",
+                _ => source
+            };
         }
 
         /// <summary>

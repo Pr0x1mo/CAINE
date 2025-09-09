@@ -879,21 +879,6 @@ namespace CAINE
 
         
 
-
-        //private string GetFriendlyMethodName(string source)
-        //{
-        //    return source switch
-        //    {
-        //        "exact_match" => "Exact Hash Match",
-        //        "enhanced_fuzzy_keyword" => "Fuzzy Keyword Search",
-        //        "enhanced_fuzzy_search" => "Comprehensive Fuzzy",
-        //        "advanced_scalable_vector" => "AI Vector Similarity",
-        //        "pattern_match" => "Pattern Recognition",
-        //        "comprehensive_ml" => "ML Prediction",
-        //        "openai_enhanced" => "AI Generated",
-        //        _ => source
-        //    };
-        //}
         // ADD this helper method for advanced vector scoring
         private double CalculateAdvancedVectorScore(VectorMatch match, double[] features)
         {
@@ -1568,8 +1553,9 @@ namespace CAINE
                     return;
                 }
 
+                System.Diagnostics.Debug.WriteLine("Step 2 completed - input validated");
+
                 // STEP 3: SECURITY CHECK
-                // Make sure the input is safe before sending to AI
                 var validation = SecurityValidator.ValidateInput(err, Environment.UserName, currentSessionId);
                 if (!validation.IsValid)
                 {
@@ -1577,39 +1563,59 @@ namespace CAINE
                     return;
                 }
 
+                System.Diagnostics.Debug.WriteLine("Step 3 completed - security check passed");
+
                 // STEP 4: BUILD CONVERSATION CONTEXT
-                // Find similar errors we've solved before to give ChatGPT context
-                var messages = await BuildEnhancedChatHistoryAsync(validation.CleanInput);
+                object[] messages = null;
+                try
+                {
+                    messages = await BuildEnhancedChatHistoryAsync(validation.CleanInput);
+                    System.Diagnostics.Debug.WriteLine("Step 4 completed - context built successfully");
+                }
+                catch (Exception contextEx)
+                {
+                    ResultBox.Text = $"Context building failed: {contextEx.Message}";
+                    System.Diagnostics.Debug.WriteLine($"Context building error: {contextEx}");
+                    return;
+                }
 
                 // STEP 5: ASK CHATGPT
-                // Send the error and context to ChatGPT for expert advice
-                var gptResponse = await AskOpenAIAsync(messages);
+                string gptResponse = null;
+                try
+                {
+                    gptResponse = await AskOpenAIAsync(messages);
+                    System.Diagnostics.Debug.WriteLine("Step 5 completed - OpenAI response received");
+                }
+                catch (Exception openAiEx)
+                {
+                    ResultBox.Text = $"OpenAI API call failed: {openAiEx.Message}";
+                    System.Diagnostics.Debug.WriteLine($"OpenAI error: {openAiEx}");
+                    return;
+                }
 
                 // STEP 6: TRACK THIS NEW SOLUTION
-                // Remember what ChatGPT suggested so we can learn from feedback
                 currentSolutionHash = Sha256Hex(gptResponse);
                 currentSolutionSource = "openai_enhanced";
-                //currentSolutionConfidence = 0.5; // Default confidence for new AI solutions
 
                 // STEP 7: DISPLAY THE AI RESPONSE
-                // Show the solution with a note that it's AI-generated and needs rating
                 var confidenceText = "AI Generated Solution (Confidence: Learning) | Please rate this solution to help CAINE learn";
                 ResultBox.Text = $"{confidenceText}\n\n{gptResponse}";
 
                 // STEP 8: PREPARE FOR TEACHING
-                // Extract clean steps in case user wants to save this solution
                 var numbered = ExtractNumberedLines(gptResponse).ToArray();
                 TeachSteps.Text = numbered.Length > 0
                     ? string.Join(Environment.NewLine, numbered)
                     : gptResponse;
 
                 // STEP 9: ENABLE FEEDBACK
-                // Let user rate the AI's suggestion
                 EnableFeedbackButtons();
+
+                System.Diagnostics.Debug.WriteLine("All steps completed successfully");
             }
             catch (Exception ex)
             {
                 ResultBox.Text = "OpenAI consultation failed:\n" + ex.Message;
+                System.Diagnostics.Debug.WriteLine($"Overall error in BtnCaineApi_Click: {ex}");
             }
             finally
             {
@@ -3049,56 +3055,64 @@ namespace CAINE
         private async Task<object[]> BuildEnhancedChatHistoryAsync(string incomingErrorMessage)
         {
             var incomingLower = (incomingErrorMessage ?? "").ToLowerInvariant();
-            var esc = incomingLower.Replace("'", "''");  // Escape for SQL safety
+            var esc = incomingLower.Replace("'", "''");
 
-            // FIND RELATED SUCCESSFUL SOLUTIONS
-            // Search for similar errors that have good feedback ratings
             var related = await Task.Run(() =>
             {
                 var list = new List<(string Sig, string Steps, string Exact, double SuccessRate)>();
-                using (var conn = OpenConn())
-                using (var cmd = new OdbcCommand($@"
-                    SELECT kb.error_signature, kb.resolution_steps, kb.error_text,
-                           COALESCE(fb.success_rate, 0.5) as success_rate
-                    FROM {TableKB} kb
-                    LEFT JOIN (
-                        -- Only include solutions with enough feedback to be reliable
-                        SELECT solution_hash, 
-                               AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate
-                        FROM {TableFeedback}
-                        GROUP BY solution_hash
-                        HAVING COUNT(*) >= 3
-                    ) fb ON kb.error_hash = fb.solution_hash
-                    WHERE lower(kb.error_signature) LIKE '%{esc}%'
-                       OR lower(kb.error_text) LIKE '%{esc}%'
-                    ORDER BY success_rate DESC, kb.created_at DESC
-                    LIMIT 6                                          -- Top 6 most relevant solutions
-                ", conn))
-                using (var rdr = cmd.ExecuteReader())
+                try
                 {
-                    while (rdr.Read())
+                    using (var conn = OpenConn())
+                    using (var cmd = new OdbcCommand($@"
+                SELECT kb.error_signature, kb.resolution_steps, kb.error_text,
+                       COALESCE(fb.success_rate, 0.5) as success_rate
+                FROM {TableKB} kb
+                LEFT JOIN (
+                    SELECT solution_hash, 
+                           AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate
+                    FROM {TableFeedback}
+                    GROUP BY solution_hash
+                    HAVING COUNT(*) >= 3
+                ) fb ON kb.error_hash = fb.solution_hash
+                WHERE lower(kb.error_signature) LIKE '%{esc}%'
+                   OR lower(kb.error_text) LIKE '%{esc}%'
+                ORDER BY success_rate DESC, kb.created_at DESC
+                LIMIT 6
+            ", conn))
+                    using (var rdr = cmd.ExecuteReader())
                     {
-                        var row = (
-                            Sig: rdr.IsDBNull(0) ? "" : rdr.GetString(0),
-                            Steps: rdr.IsDBNull(1) ? "" : (rdr.GetValue(1)?.ToString() ?? ""),
-                            Exact: rdr.IsDBNull(2) ? "" : rdr.GetString(2),
-                            SuccessRate: rdr.IsDBNull(3) ? 0.5 : rdr.GetDouble(3)
-                        );
-                        list.Add(row);
+                        while (rdr.Read())
+                        {
+                            try
+                            {
+                                var sig = rdr.IsDBNull(0) ? "" : rdr.GetString(0);
+                                var steps = rdr.IsDBNull(1) ? "" : ConvertArrayToString(rdr.GetValue(1));
+                                var exact = rdr.IsDBNull(2) ? "" : rdr.GetString(2);
+                                var successRate = rdr.IsDBNull(3) ? 0.5 : rdr.GetDouble(3);
+
+                                list.Add((sig, steps, exact, successRate));
+                            }
+                            catch (Exception rowEx)
+                            {
+                                System.Diagnostics.Debug.WriteLine($"Error reading row: {rowEx.Message}");
+                                // Skip this row and continue
+                            }
+                        }
                     }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"Database query error: {ex.Message}");
                 }
                 return list;
             });
 
-            // BUILD CONVERSATION MESSAGES
-            // Create a conversation thread that includes context and the new question
+            // Rest of your method stays the same...
             var messages = new List<object>
-            {
-                // SYSTEM MESSAGE - Tell ChatGPT what its role is
-                new { role = "system", content = "You are CAINE, an expert database debugging assistant with access to proven solutions. Return concise, actionable steps in well-formatted Markdown with headers, bullet points, and code blocks when appropriate." }
-            };
+    {
+        new { role = "system", content = "You are CAINE, an expert database debugging assistant with access to proven solutions. Return concise, actionable steps in well-formatted Markdown with headers, bullet points, and code blocks when appropriate." }
+    };
 
-            // ADD CONTEXT FROM SUCCESSFUL PAST SOLUTIONS
             foreach (var r in related)
             {
                 var confidence = r.SuccessRate > FeedbackBoostThreshold ? " (Proven high success rate)" : "";
@@ -3109,7 +3123,6 @@ namespace CAINE
                 });
             }
 
-            // ADD THE NEW QUESTION
             messages.Add(new
             {
                 role = "user",

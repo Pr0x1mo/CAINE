@@ -1,4 +1,27 @@
-﻿using System;
+﻿// ============================================================================
+// CAINE MainWindow.xaml.cs 
+// TABLE OF CONTENTS (search these tags):
+// [USINGS]
+// [CLASS: MainWindow]
+//   [FIELDS & CONSTANTS]
+//   [NESTED: SolutionResult & ML classes]
+//   [CTOR & STARTUP]
+//   [DB SETUP]
+//   [SECURITY UTILS]
+//   [SEARCH BUTTON FLOW]
+//   [MAINTENANCE & VECTOR INDEX]
+//   [SCALABLE VECTOR SEARCH]
+//   [CONFIDENCE CALC]
+//   [INTERACTIVE TREE]
+//   [ML PREPROCESSING & COMPREHENSIVE ML SEARCH]
+//   [RESULT ENHANCERS & SELECTION]
+//   [SUGGESTIONS & DISPLAY HELPERS]
+//   [OPENAI INTEGRATION]
+//   [TEACHING FLOW]
+//   [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
+//   [MISC HELPERS]
+//
+using System;
 using System.Collections.Generic;
 using System.Data.Odbc;
 using System.Globalization;
@@ -22,7 +45,7 @@ namespace CAINE
 {
     /// <summary>
     /// CAINE (Computer-Aided Intelligence Neuro Enhancer) - Main Application Window
-    /// 
+    ///
     /// WHAT THIS DOES:
     /// - Acts like a smart assistant that remembers AND learns how to fix errors
     /// - When you paste an error message, it searches using 5 different strategies
@@ -30,24 +53,24 @@ namespace CAINE
     /// - If no solution exists, asks ChatGPT for help and learns from the answer
     /// - Users rate solutions as helpful or not, improving confidence scores
     /// - Creates a self-improving knowledge base that gets smarter with each use
-    /// 
+    ///
     /// ============================================================================
     /// CAINE SYSTEM ARCHITECTURE - How Everything Works Together
-    /// 
+    ///
     /// THE BIG PICTURE:
     /// • Knowledge Base: Stores all error solutions with version control
     /// • Search Engine: Finds solutions using 5 different search methods
     /// • ML Engine: SVM, clustering, decision trees analyze patterns
     /// • AI Integration: ChatGPT fallback for unknown errors
     /// • Learning System: Feedback loop improves confidence and accuracy
-    /// 
+    ///
     /// 5-LAYER SEARCH PIPELINE:
     /// 1. Exact Match - SHA256 hash lookup (fastest)
     /// 2. Fuzzy Search - Handles typos with Levenshtein distance
     /// 3. Keyword Search - Token-based matching
     /// 4. Vector Similarity - Semantic search with embeddings
     /// 5. ML Prediction - SVM/clustering for pattern matching
-    /// 
+    ///
     /// USER JOURNEY:
     /// [Error Input] → [5-Layer Search] → Found? → [Show Solution + Confidence]
     ///                        ↓                            ↓
@@ -58,7 +81,7 @@ namespace CAINE
     ///                [Show AI Solution]          [Improve Confidence]
     ///                        ↓
     ///                  [User Can Teach]
-    /// 
+    ///
     /// SUCCESS METRICS - How We Know CAINE Is Working:
     /// • SVM accuracy: 88-96% on error classification
     /// • Solutions reach 100% confidence after ~10 positive feedbacks
@@ -67,18 +90,20 @@ namespace CAINE
     /// • Security: 0 successful SQL injection attempts
     /// ============================================================================
     /// </summary>
+// [CLASS: MainWindow]
     public partial class MainWindow : Window
     {
         // DATABASE CONFIGURATION - Where CAINE stores its knowledge
         // Think of these as different filing cabinets in a digital library
+        // [FIELDS & CONSTANTS]
         private const string DsnName = "CAINE_Databricks";                    // Main database connection name
         private const string TableKB = "default.cai_error_kb";               // Main knowledge base - stores error solutions
         private const string TablePatterns = "default.cai_error_patterns";   // Pattern matching rules - like shortcuts for common errors
         private const string TableFeedback = "default.cai_solution_feedback"; // User ratings - tracks which solutions actually work
         private const string TableKBVersions = "default.cai_kb_versions";    // Version history - keeps track of changes over time
-        private bool isNeuralNetworkTrained = false;  
-                                                      // SMART SEARCH SETTINGS - How CAINE decides if solutions are good enough
-                                                      // These numbers control how picky CAINE is when suggesting solutions
+        private bool isNeuralNetworkTrained = false;
+        // SMART SEARCH SETTINGS - How CAINE decides if solutions are good enough
+        // These numbers control how picky CAINE is when suggesting solutions
 
         private const int LikeTokenMax = 4;                  // Max keywords to search with
         private const double VectorMinCosine = 0.70;         // How similar errors need to be (70% minimum)
@@ -114,7 +139,7 @@ namespace CAINE
         private ScalableVectorManager.VectorCacheManager vectorCacheManager;
         /// <summary>
         /// SOLUTION RESULT - Container for everything CAINE knows about a solution
-        /// 
+        ///
         /// WHAT THIS STORES:
         /// Think of this like a report card for each solution, containing:
         /// - The actual solution steps
@@ -122,6 +147,7 @@ namespace CAINE
         /// - How many people have tried it and whether it worked
         /// - Whether there are conflicting opinions about it
         /// </summary>
+  // [NESTED: SolutionResult & ML classes]
         public class SolutionResult
         {
             public string Steps { get; set; }          // The actual solution instructions
@@ -138,18 +164,20 @@ namespace CAINE
 
         /// <summary>
         /// STARTUP - Initialize CAINE when the application opens
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// - Sets up secure connections (like installing security cameras)
         /// - Creates the database tables if they don't exist (like setting up filing cabinets)
         /// - Prepares CAINE to start helping with errors
         /// </summary>
 
+        // [CTOR & STARTUP]
         public MainWindow()
         {
             InitializeComponent();
             EnsureTls12();                                     // Set up secure connections to ChatGPT
             SecurityValidator.InitializeSecurityTables();     // Set up security monitoring
+                                                              // [DB SETUP]
             InitializeEnhancedTables();
 
             // Use Loaded event for async initialization
@@ -166,7 +194,7 @@ namespace CAINE
         }
         /// <summary>
         /// DATABASE SETUP - Creates all the tables CAINE needs to store knowledge
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Think of this like setting up a smart library system with:
         /// - A main catalog (knowledge base) for storing solutions
@@ -174,6 +202,7 @@ namespace CAINE
         /// - A pattern recognition system for common error types
         /// - A version control system (like tracking edits in Google Docs)
         /// </summary>
+  // [DB SETUP]
         private async void InitializeEnhancedTables()
         {
             try
@@ -184,6 +213,7 @@ namespace CAINE
                     {
                         // KNOWLEDGE BASE VERSIONS TABLE
                         // Like a "track changes" feature - keeps history of all solution updates
+                        // [SECURITY UTILS]
                         ExecuteSecureCommand(conn, $@"
                             CREATE TABLE IF NOT EXISTS {TableKBVersions} (
                                 version_id STRING,              -- Unique ID for this version
@@ -201,6 +231,7 @@ namespace CAINE
 
                         // USER FEEDBACK TABLE
                         // Like a review system - tracks whether solutions actually work in practice
+                        // [SECURITY UTILS]
                         ExecuteSecureCommand(conn, $@"
                             CREATE TABLE IF NOT EXISTS {TableFeedback} (
                                 feedback_id STRING,            -- Unique ID for this feedback
@@ -220,6 +251,7 @@ namespace CAINE
 
                         // PATTERN MATCHING TABLE
                         // Like having a list of common shortcuts - recognizes frequent error types
+                        // [SECURITY UTILS]
                         ExecuteSecureCommand(conn, $@"
                             CREATE TABLE IF NOT EXISTS {TablePatterns} (
                                 pattern_id STRING,                -- Unique ID for this pattern
@@ -245,13 +277,14 @@ namespace CAINE
 
         /// <summary>
         /// SECURITY PROTECTION - Execute database commands safely
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Like having a security guard check every database operation to prevent:
         /// - SQL injection attacks (malicious code in user input)
         /// - Unauthorized access to sensitive data
         /// - Corruption of the knowledge base
         /// </summary>
+        // [SECURITY UTILS]
         private void ExecuteSecureCommand(OdbcConnection conn, string sql, Dictionary<string, object> parameters = null)
         {
             using (var cmd = new OdbcCommand(sql, conn))
@@ -270,13 +303,13 @@ namespace CAINE
 
         /// <summary>
         /// INPUT SANITIZATION - Clean up user input to prevent security issues
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Like a spam filter for database input - removes dangerous characters that could:
         /// - Break the database
         /// - Allow hackers to steal data
         /// - Corrupt the knowledge base
-        /// 
+        ///
         /// Think of it as translating "messy human input" into "safe database language"
         /// </summary>
         private static string SecureEscape(string input)
@@ -303,7 +336,7 @@ namespace CAINE
 
         /// <summary>
         /// ENHANCED MAIN SEARCH FUNCTION - Now with automatic Interactive Decision Tree integration
-        /// 
+        ///
         /// DECISION TREE AUTO-TRIGGERS FOR:
         /// - Low confidence results (< 60%)
         /// - Complex multi-step solutions
@@ -311,6 +344,7 @@ namespace CAINE
         /// - When multiple conflicting solutions exist
         /// - First-time users encountering specific error types
         /// </summary>
+  // [SEARCH BUTTON FLOW]
         private async void BtnSearch_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -342,15 +376,18 @@ namespace CAINE
 
                 // STEP 4: ML PREPROCESSING
                 var features = ExtractFeatures(cleanErrorInput);
+                // [ML PREPROCESSING & COMPREHENSIVE ML SEARCH]
                 var mlInsights = await PerformMLPreprocessingAsync(cleanErrorInput, features, sig);
 
                 // STEP 5: PERIODIC MAINTENANCE
+                // [MAINTENANCE & VECTOR INDEX]
                 await PerformPeriodicMaintenanceAsync();
 
                 // STEP 6: ENHANCED SEARCH PIPELINE
                 SolutionResult result = null;
                 var searchResults = new List<SolutionResult>();
 
+                // [SUGGESTIONS & DISPLAY HELPERS]
                 var mlInsightsText = GenerateMLInsightsText(mlInsights);
                 if (!string.IsNullOrEmpty(mlInsightsText))
                 {
@@ -361,6 +398,7 @@ namespace CAINE
                 result = await TryExactMatchAsync(hash);
                 if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                 {
+                    // [RESULT ENHANCERS & SELECTION]
                     result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                     searchResults.Add(result);
                 }
@@ -368,9 +406,11 @@ namespace CAINE
                 // SEARCH LAYER 2: ENHANCED KEYWORD SEARCH
                 if (result == null)
                 {
+                    // [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
                     result = await TryEnhancedKeywordMatchAsync(sig);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
+                        // [RESULT ENHANCERS & SELECTION]
                         result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                         searchResults.Add(result);
                     }
@@ -379,9 +419,11 @@ namespace CAINE
                 // SEARCH LAYER 3: COMPREHENSIVE FUZZY SEARCH
                 if (result == null)
                 {
+                    // [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
                     result = await TryEnhancedFuzzySearchAsync(cleanErrorInput);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
+                        // [RESULT ENHANCERS & SELECTION]
                         result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                         searchResults.Add(result);
                     }
@@ -391,6 +433,7 @@ namespace CAINE
                 if (result == null)
                 {
                     var tokens = Tokens(sig);
+                    // [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
                     result = await TryAdvancedScalableVectorMatchAsync(cleanErrorInput, tokens, features);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
@@ -404,6 +447,7 @@ namespace CAINE
                     result = await TryEnhancedPatternMatchAsync(sig);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
+                        // [RESULT ENHANCERS & SELECTION]
                         result = await EnhanceResultWithMLAsync(result, features, mlInsights);
                         searchResults.Add(result);
                     }
@@ -412,6 +456,7 @@ namespace CAINE
                 // SEARCH LAYER 6: COMPREHENSIVE ML SEARCH
                 if (result == null)
                 {
+                    // [ML PREPROCESSING & COMPREHENSIVE ML SEARCH]
                     result = await ComprehensiveMLSearchAsync(cleanErrorInput, hash, features);
                     if (result != null && !string.IsNullOrWhiteSpace(result.Steps))
                     {
@@ -422,6 +467,7 @@ namespace CAINE
                 // STEP 7: DISPLAY RESULTS WITH INTERACTIVE TREE INTEGRATION
                 if (searchResults.Count > 0)
                 {
+                    // [RESULT ENHANCERS & SELECTION]
                     var bestResult = SelectBestSolutionWithML(searchResults, mlInsights);
                     if (bestResult != null)
                     {
@@ -429,10 +475,14 @@ namespace CAINE
                         currentSolutionSource = bestResult.Source;
 
                         // CHECK IF INTERACTIVE TREE SHOULD AUTO-LAUNCH
+                        // [INTERACTIVE TREE]
                         var treeRecommendation = await EvaluateInteractiveTreeNeedAsync(bestResult, mlInsights, cleanErrorInput);
 
+                        // [SUGGESTIONS & DISPLAY HELPERS]
                         var confidenceText = GetMLEnhancedConfidenceText(bestResult, mlInsights);
+                        // [SUGGESTIONS & DISPLAY HELPERS]
                         var sourceInfo = GetEnhancedSearchSourceInfo(bestResult.Source);
+                        // [SUGGESTIONS & DISPLAY HELPERS]
                         var searchInsights = GetSearchMethodInsights(bestResult.Source, searchResults.Count);
 
                         // Display result with tree recommendation
@@ -452,6 +502,7 @@ namespace CAINE
 
                                 // Launch tree after short delay to let user see the result
                                 await Task.Delay(1500);
+                                // [INTERACTIVE TREE]
                                 await LaunchInteractiveTreeAsync(hash, cleanErrorInput, bestResult);
                                 return;
                             }
@@ -472,6 +523,7 @@ namespace CAINE
                 // STEP 8: NO MATCH FOUND - OFFER INTERACTIVE TREE AS SOLUTION PATH
                 System.Diagnostics.Debug.WriteLine("No matches found - offering interactive troubleshooting");
 
+                // [SUGGESTIONS & DISPLAY HELPERS]
                 var suggestions = await GenerateMLEnhancedSuggestions(cleanErrorInput, features, mlInsights);
                 var noMatchMessage = "No matches found using enhanced ML and fuzzy search methods.";
 
@@ -511,6 +563,7 @@ namespace CAINE
         }
 
         // SEPARATE METHOD - Move this outside of BtnSearch_Click
+        // [MAINTENANCE & VECTOR INDEX]
         private async Task PerformPeriodicMaintenanceAsync()
         {
             // Only run maintenance occasionally to avoid performance impact
@@ -520,6 +573,7 @@ namespace CAINE
                 {
                     try
                     {
+                        // [MAINTENANCE & VECTOR INDEX]
                         await PopulateVectorIndexAsync();
                         System.Diagnostics.Debug.WriteLine("Periodic vector index maintenance completed");
                     }
@@ -531,6 +585,7 @@ namespace CAINE
             }
         }
 
+        // [MAINTENANCE & VECTOR INDEX]
         private async Task PopulateVectorIndexAsync()
         {
             try
@@ -542,7 +597,7 @@ namespace CAINE
                 SELECT kb.error_hash, kb.error_text, kb.resolution_steps, kb.embedding
                 FROM {TableKB} kb
                 LEFT JOIN default.cai_vector_index vi ON kb.error_hash = vi.error_hash
-                WHERE vi.error_hash IS NULL 
+                WHERE vi.error_hash IS NULL
                 AND kb.embedding IS NOT NULL
                 LIMIT 100";
 
@@ -594,10 +649,10 @@ namespace CAINE
                     var sql = $@"
                 INSERT INTO default.cai_vector_index VALUES (
                     '{Guid.NewGuid()}',
-                    '{errorHash}', 
+                    '{errorHash}',
                     '{vectorJson}',
                     '{lshHashes[0]}',
-                    '{lshHashes[1]}', 
+                    '{lshHashes[1]}',
                     '{lshHashes[2]}',
                     current_timestamp()
                 )";
@@ -635,6 +690,7 @@ namespace CAINE
 
             return hashes.ToArray();
         }
+        // [SCALABLE VECTOR SEARCH]
         private async Task<SolutionResult> SecureVectorSearchAsync(string rawError, string userId, string sessionId)
         {
             try
@@ -701,6 +757,7 @@ namespace CAINE
             }
         }
 
+        // [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
         private async Task<SolutionResult> TryAdvancedScalableVectorMatchAsync(string rawError, string[] likeTokens, double[] features)
         {
             try
@@ -758,6 +815,7 @@ namespace CAINE
             }
         }
 
+        // [CONFIDENCE CALC]
         public class UnifiedConfidenceCalculator
         {
             private const int MinFeedbackForHighConfidence = 5;
@@ -877,7 +935,7 @@ namespace CAINE
             public double DaysOld { get; set; }
         }
 
-        
+
 
         // ADD this helper method for advanced vector scoring
         private double CalculateAdvancedVectorScore(VectorMatch match, double[] features)
@@ -896,6 +954,7 @@ namespace CAINE
         /// <summary>
         /// TREE EVALUATION - Determines when interactive trees should be recommended or auto-launched
         /// </summary>
+  // [INTERACTIVE TREE]
         private async Task<TreeRecommendation> EvaluateInteractiveTreeNeedAsync(SolutionResult result, MLInsights insights, string errorInput)
         {
             var recommendation = new TreeRecommendation();
@@ -996,6 +1055,7 @@ namespace CAINE
         /// <summary>
         /// LAUNCH INTERACTIVE TREE - Opens the interactive troubleshooting window
         /// </summary>
+  // [INTERACTIVE TREE]
         private async Task LaunchInteractiveTreeAsync(string errorHash, string errorText, SolutionResult relatedResult = null)
         {
             try
@@ -1029,6 +1089,7 @@ namespace CAINE
         /// <summary>
         /// ENHANCED INTERACTIVE TREE BUTTON - Now context-aware
         /// </summary>
+  // [INTERACTIVE TREE]
         private async void BtnInteractiveTree_Click(object sender, RoutedEventArgs e)
         {
             if (string.IsNullOrEmpty(currentSolutionHash))
@@ -1044,11 +1105,13 @@ namespace CAINE
                 // Generate hash from current input
                 var sig = Normalize(ErrorInput.Text);
                 var hash = Sha256Hex(sig);
+                // [INTERACTIVE TREE]
                 await LaunchInteractiveTreeAsync(hash, ErrorInput.Text);
             }
             else
             {
                 // Use current solution context
+                // [INTERACTIVE TREE]
                 await LaunchInteractiveTreeAsync(currentSolutionHash, ErrorInput.Text);
             }
 
@@ -1070,6 +1133,7 @@ namespace CAINE
         /// <summary>
         /// ML PREPROCESSING - Runs all ML analysis before main search
         /// </summary>
+  // [ML PREPROCESSING & COMPREHENSIVE ML SEARCH]
         private async Task<MLInsights> PerformMLPreprocessingAsync(string cleanErrorInput, double[] features, string sig)
         {
             var insights = new MLInsights();
@@ -1133,6 +1197,7 @@ namespace CAINE
         /// <summary>
         /// COMPREHENSIVE ML SEARCH - Uses all ML capabilities for solution prediction
         /// </summary>
+  // [ML PREPROCESSING & COMPREHENSIVE ML SEARCH]
         private async Task<SolutionResult> ComprehensiveMLSearchAsync(string cleanErrorInput, string hash, double[] features)
         {
             if (mlEngine == null) return null;
@@ -1214,6 +1279,7 @@ namespace CAINE
         /// <summary>
         /// ENHANCE RESULTS WITH ML - Applies ML analysis to improve result confidence
         /// </summary>
+  // [RESULT ENHANCERS & SELECTION]
         private async Task<SolutionResult> EnhanceResultWithMLAsync(SolutionResult result, double[] features, MLInsights insights)
         {
             if (result == null || !insights.MLAvailable) return result;
@@ -1245,6 +1311,7 @@ namespace CAINE
         /// <summary>
         /// BETTER SOLUTION SELECTION WITH ML - Uses ML insights to pick best solution
         /// </summary>
+  // [RESULT ENHANCERS & SELECTION]
         private SolutionResult SelectBestSolutionWithML(List<SolutionResult> results, MLInsights insights)
         {
             if (results.Count == 0) return null;
@@ -1312,6 +1379,7 @@ namespace CAINE
         /// <summary>
         /// Generate ML insights text for display
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private string GenerateMLInsightsText(MLInsights insights)
         {
             if (!insights.MLAvailable) return "";
@@ -1343,8 +1411,10 @@ namespace CAINE
         /// <summary>
         /// Enhanced confidence text with ML insights
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private string GetMLEnhancedConfidenceText(SolutionResult result, MLInsights insights)
         {
+            // [SUGGESTIONS & DISPLAY HELPERS]
             var baseText = GetEnhancedConfidenceText(result);
 
             if (insights.IsAnomaly)
@@ -1363,11 +1433,13 @@ namespace CAINE
         /// <summary>
         /// Generate ML-enhanced suggestions when no match found
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private async Task<string> GenerateMLEnhancedSuggestions(string cleanErrorInput, double[] features, MLInsights insights)
         {
             var suggestions = new List<string>();
 
             // Add base fuzzy suggestions
+            // [SUGGESTIONS & DISPLAY HELPERS]
             var baseSuggestions = await GenerateSearchSuggestions(cleanErrorInput);
             if (!string.IsNullOrEmpty(baseSuggestions))
             {
@@ -1391,6 +1463,7 @@ namespace CAINE
         /// <summary>
         /// Enhanced confidence display with fuzzy search insights
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private string GetEnhancedConfidenceText(SolutionResult result)
         {
             var baseText = GetConfidenceText(result); // Use existing method
@@ -1410,6 +1483,7 @@ namespace CAINE
         /// <summary>
         /// Enhanced search source information
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private string GetEnhancedSearchSourceInfo(string source)
         {
             return source switch
@@ -1428,6 +1502,7 @@ namespace CAINE
         /// <summary>
         /// Provides insights about the search method used
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private string GetSearchMethodInsights(string source, int totalSearchLayers)
         {
             var insights = source switch
@@ -1447,6 +1522,7 @@ namespace CAINE
         /// <summary>
         /// Generate search suggestions based on fuzzy analysis
         /// </summary>
+  // [SUGGESTIONS & DISPLAY HELPERS]
         private async Task<string> GenerateSearchSuggestions(string cleanErrorInput)
         {
             try
@@ -1478,8 +1554,8 @@ namespace CAINE
                             {
                                 var mainToken = tokens[0];
                                 var sql = $@"
-                            SELECT DISTINCT error_signature 
-                            FROM {TableKB} 
+                            SELECT DISTINCT error_signature
+                            FROM {TableKB}
                             WHERE error_signature LIKE '%{SecureEscape(mainToken.Substring(0, Math.Min(mainToken.Length, 4)))}%'
                             LIMIT 5";
 
@@ -1522,19 +1598,20 @@ namespace CAINE
 
         /// <summary>
         /// AI CONSULTATION - Ask ChatGPT for help when CAINE doesn't know the answer
-        /// 
+        ///
         /// WHAT THIS DOES WHEN USER CLICKS "USE CAINE API":
         /// 1. Takes the error message and validates it for security
         /// 2. Looks through CAINE's knowledge base for similar past solutions
         /// 3. Builds a conversation context with proven solutions
         /// 4. Asks ChatGPT for advice using that context
         /// 5. Shows the AI's response and lets user rate it
-        /// 
+        ///
         /// LIKE CONSULTING A SPECIALIST:
         /// - Brings the specialist up to speed with similar cases we've solved
         /// - Gets expert advice on the new problem
         /// - Records the advice so we can learn if it works
         /// </summary>
+  // [OPENAI INTEGRATION]
         private async void BtnCaineApi_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -1625,20 +1702,21 @@ namespace CAINE
 
         /// <summary>
         /// TEACHING SYSTEM - Add new knowledge to CAINE's brain
-        /// 
+        ///
         /// WHAT THIS DOES WHEN USER CLICKS "TEACH":
         /// 1. Takes the error and solution steps from the user
         /// 2. Validates everything for security
         /// 3. Checks if similar solutions already exist
         /// 4. Creates a unique fingerprint and stores the knowledge
         /// 5. Sets up the solution to learn from future feedback
-        /// 
+        ///
         /// LIKE TRAINING A SMART ASSISTANT:
         /// - User shows CAINE a new problem and solution
         /// - CAINE remembers it and files it properly
         /// - CAINE can now suggest this solution to others with similar problems
         /// - The more people rate it positively, the more confident CAINE becomes
         /// </summary>
+  // [TEACHING FLOW]
         private async void BtnTeach_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -1717,7 +1795,7 @@ namespace CAINE
                 {
                     currentSolutionHash = hash;
                     currentSolutionSource = "human_teaching";
-                   // currentSolutionConfidence = 0.8; // High confidence for human-provided solutions
+                    // currentSolutionConfidence = 0.8; // High confidence for human-provided solutions
                     await Task.Run(() => RecordEnhancedFeedback(true, "User-provided teaching", 5));
                 }
 
@@ -1744,7 +1822,7 @@ namespace CAINE
 
         /// <summary>
         /// ENHANCED KEYWORD SEARCH - Now uses fuzzy search with synonyms and N-gram matching
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Instead of just exact keyword matching, this now:
         /// 1. Expands search terms using synonyms (timeout -> timed out, hung, freeze)
@@ -1752,6 +1830,7 @@ namespace CAINE
         /// 3. Applies N-gram similarity for partial matches
         /// 4. Combines all scores for better ranking
         /// </summary>
+  // [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
         private async Task<SolutionResult> TryEnhancedKeywordMatchAsync(string sig)
         {
             return await Task.Run(() =>
@@ -1858,13 +1937,14 @@ namespace CAINE
 
         /// <summary>
         /// ENHANCED FUZZY SEARCH - Improved version that uses all FuzzySearchEngine capabilities
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// 1. Uses synonym expansion to find more matches
         /// 2. Applies both fuzzy and N-gram scoring
         /// 3. Ranks results by combined similarity and user feedback
         /// 4. Provides detailed scoring breakdown for transparency
         /// </summary>
+  // [FUZZY/KEYWORD/VECTOR/PATTERN SEARCH]
         private async Task<SolutionResult> TryEnhancedFuzzySearchAsync(string cleanErrorInput)
         {
             return await Task.Run(() =>
@@ -2012,7 +2092,7 @@ namespace CAINE
 
         /// <summary>
         /// ENHANCED VECTOR SEARCH - Now uses fuzzy search for preprocessing
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// 1. Uses fuzzy search to expand the query terms before vector search
         /// 2. Combines vector similarity with fuzzy scoring
@@ -2163,14 +2243,14 @@ namespace CAINE
         }
         /// <summary>
         /// EXACT MATCH SEARCH - Look for errors we've seen exactly before
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Like looking up a book by its exact ISBN - if we've cataloged this exact error before,
         /// we can immediately provide the solution along with:
         /// - How many people have tried it
         /// - What percentage said it worked
         /// - How confident CAINE is about suggesting it
-        /// 
+        ///
         /// This is the fastest and most reliable way to solve problems
         /// </summary>
         private async Task<SolutionResult> TryExactMatchAsync(string hash)
@@ -2184,7 +2264,7 @@ namespace CAINE
                         // COMPLEX SQL QUERY - Joins knowledge base with user feedback
                         // This gets the solution AND calculates how well it's worked for others
                         var sql = $@"
-                    SELECT 
+                    SELECT
                         kb.resolution_steps,                    -- The actual solution steps
                         kb.error_hash,                         -- Unique ID of this error type
                         COALESCE(fb.success_rate, 0.5) as success_rate,     -- % of people who said it worked
@@ -2193,7 +2273,7 @@ namespace CAINE
                     FROM {TableKB} kb
                     LEFT JOIN (
                         -- SUBQUERY: Calculate statistics from user feedback
-                        SELECT 
+                        SELECT
                             solution_hash,
                             AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,    -- Average success rate
                             COUNT(*) as feedback_count,                                          -- Total feedback count
@@ -2254,11 +2334,11 @@ namespace CAINE
 
         /// <summary>
         /// ARRAY CONVERSION HELPER - Convert database array format to readable text
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Database stores solution steps as arrays like: ["step1", "step2", "step3"]
         /// This converts them to readable text with each step on a new line
-        /// 
+        ///
         /// LIKE A TRANSLATOR:
         /// Converts computer storage format into human-readable instructions
         /// </summary>
@@ -2286,15 +2366,15 @@ namespace CAINE
 
         /// <summary>
         /// PATTERN MATCHING - Look for solutions using pattern recognition
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Uses regular expressions (pattern matching rules) to identify error types
         /// Like having a list of "if the error contains X, try solution Y"
-        /// 
+        ///
         /// EXAMPLE PATTERNS:
         /// - If error contains "login failed" → try password reset steps
         /// - If error contains "connection timeout" → try network troubleshooting
-        /// 
+        ///
         /// Tracks which patterns work best over time and prioritizes successful ones
         /// </summary>
         private async Task<SolutionResult> TryEnhancedPatternMatchAsync(string sig)
@@ -2349,11 +2429,11 @@ namespace CAINE
 
         /// <summary>
         /// KEYWORD SEARCH - Find solutions using important words from the error
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Extracts important keywords from the error message and searches for solutions
         /// that dealt with similar keywords
-        /// 
+        ///
         /// LIKE A SMART SEARCH ENGINE:
         /// - Identifies the most important words (ignoring "the", "and", etc.)
         /// - Finds solutions that dealt with those same important concepts
@@ -2426,20 +2506,20 @@ namespace CAINE
             });
         }
 
-   
 
-  
-     
+
+
+
 
         /// <summary>
         /// CONFIDENCE CALCULATOR - Determines how much to trust a solution
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Combines multiple factors to create a confidence score:
         /// - Success rate: How often users said it worked
         /// - Sample size: More ratings = more confidence
         /// - Conflicts: Reduces confidence if people disagree
-        /// 
+        ///
         /// LIKE A REPUTATION SYSTEM:
         /// - New solutions start at 50% confidence
         /// - Positive feedback increases confidence
@@ -2465,13 +2545,13 @@ namespace CAINE
 
         /// <summary>
         /// SOLUTION RANKING - Pick the best solution from multiple options
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// When CAINE finds multiple possible solutions, this picks the best one based on:
         /// 1. Confidence score (combination of AI similarity and user feedback)
         /// 2. Success rate (how often users said it worked)
         /// 3. Number of ratings (more feedback = more reliable)
-        /// 
+        ///
         /// LIKE A RECOMMENDATION ALGORITHM:
         /// Sorts all options by quality and picks the top-rated one that meets minimum standards
         /// </summary>
@@ -2494,11 +2574,11 @@ namespace CAINE
 
         /// <summary>
         /// SEARCH SOURCE INFO - Explain how CAINE found the solution
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Tells users which search method found their solution so they understand
         /// how CAINE's intelligence worked
-        /// 
+        ///
         /// HELPS WITH TRANSPARENCY:
         /// - Users know if it was an exact match (most reliable)
         /// - Or if AI had to get creative with similarity matching
@@ -2519,10 +2599,10 @@ namespace CAINE
 
         /// <summary>
         /// CONFIDENCE DISPLAY - Create user-friendly confidence message
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Converts technical confidence data into plain English that users can understand
-        /// 
+        ///
         /// SHOWS USERS:
         /// - Confidence level in simple terms (High/Medium/Low)
         /// - Actual success percentage
@@ -2546,11 +2626,11 @@ namespace CAINE
 
         /// <summary>
         /// FEEDBACK RECORDING - Learn from user experiences
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// When users click "thumbs up" or "thumbs down", this records their feedback
         /// and immediately updates the confidence score for future users
-        /// 
+        ///
         /// LIKE A LEARNING SYSTEM:
         /// - Records whether the solution actually worked
         /// - Updates confidence scores based on new feedback
@@ -2609,11 +2689,11 @@ namespace CAINE
 
         /// <summary>
         /// CONFIDENCE UPDATE - Recalculate how reliable a solution is
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// After each new piece of feedback, this recalculates the confidence score
         /// by looking at ALL the feedback for that solution
-        /// 
+        ///
         /// LIKE UPDATING A PRODUCT RATING:
         /// - Someone leaves a new review
         /// - The overall star rating gets updated
@@ -2628,7 +2708,7 @@ namespace CAINE
                     // CALCULATE NEW STATISTICS - Fixed for Databricks
                     // Look at all feedback for this solution and compute averages
                     var sql = $@"
-                        SELECT 
+                        SELECT
                             AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,  -- % who said it worked
                             COUNT(*) as total_feedback,                                        -- Total number of ratings
                             AVG(CASE WHEN was_helpful THEN 0.0 ELSE 1.0 END) as conflict_rate -- % who said it didn't work
@@ -2662,13 +2742,13 @@ namespace CAINE
 
         /// <summary>
         /// ANALYTICS WINDOW - Show statistics and insights
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Opens a separate window that shows:
         /// - Which solutions work best
         /// - Most common error types
         /// - CAINE's learning progress over time
-        /// 
+        ///
         /// LIKE A DASHBOARD:
         /// Gives administrators insights into how well CAINE is performing
         /// </summary>
@@ -2680,14 +2760,14 @@ namespace CAINE
 
         /// <summary>
         /// POSITIVE FEEDBACK - User says the solution worked
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// When user clicks "thumbs up":
         /// 1. Records positive feedback in the database
         /// 2. Immediately updates the confidence score
         /// 3. Refreshes the display to show the new confidence rating
         /// 4. Thanks the user for helping CAINE learn
-        /// 
+        ///
         /// LIKE A LEARNING FEEDBACK LOOP:
         /// User success makes CAINE more confident about suggesting this solution to others
         /// </summary>
@@ -2760,11 +2840,11 @@ namespace CAINE
 
         /// <summary>
         /// GET UPDATED CONFIDENCE - Fetch latest confidence score after new feedback
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// After someone rates a solution, this recalculates the confidence score
         /// by looking at ALL feedback for that solution
-        /// 
+        ///
         /// LIKE REFRESHING A PRODUCT RATING:
         /// Gets the latest average rating after a new review is added
         /// </summary>
@@ -2778,7 +2858,7 @@ namespace CAINE
                     {
                         // CALCULATE FRESH STATISTICS
                         var sql = $@"
-                    SELECT 
+                    SELECT
                         AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate,  -- New success percentage
                         COUNT(*) as feedback_count                                         -- New total feedback count
                     FROM {TableFeedback}
@@ -2813,13 +2893,13 @@ namespace CAINE
 
         /// <summary>
         /// NEGATIVE FEEDBACK - User says the solution didn't work
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// When user clicks "thumbs down":
         /// 1. Records negative feedback in the database
         /// 2. Updates confidence score (making CAINE less likely to suggest this solution)
         /// 3. Encourages user to teach the correct solution
-        /// 
+        ///
         /// LIKE A QUALITY CONTROL SYSTEM:
         /// Helps CAINE learn what doesn't work so it stops suggesting bad solutions
         /// </summary>
@@ -2892,16 +2972,16 @@ namespace CAINE
 
         /// <summary>
         /// UI BUTTON MANAGEMENT - Enable/disable feedback buttons
-        /// 
+        ///
         /// WHAT THESE DO:
         /// Simple helper methods to turn the thumbs up/down buttons on and off
         /// Prevents users from rating the same solution multiple times
         /// </summary>
-  
+
 
         // Also modify your BtnSearch_Click to enable the tree button when results found:
         // Add this line after "EnableFeedbackButtons();"
-       
+
         private void EnableFeedbackButtons()
         {
             BtnInteractiveTree.IsEnabled = true;
@@ -2922,20 +3002,28 @@ namespace CAINE
 
         /// <summary>
         /// API KEY RETRIEVAL - Get ChatGPT access credentials
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Safely retrieves the OpenAI API key from environment variables
         /// Like getting a password from a secure vault instead of hardcoding it
         /// </summary>
         private static string GetOpenAIApiKey()
         {
-            return Environment.GetEnvironmentVariable("OPENAI_API_KEY")
-                   ?? throw new InvalidOperationException("OPENAI_API_KEY environment variable not set");
+            var key = Environment.GetEnvironmentVariable("OPENAI_API_KEY");
+            System.Diagnostics.Debug.WriteLine($"Retrieved key: '{key}'");
+            System.Diagnostics.Debug.WriteLine($"Key length: {key?.Length ?? 0}");
+
+            if (string.IsNullOrEmpty(key))
+            {
+                throw new InvalidOperationException("OPENAI_API_KEY environment variable not set");
+            }
+
+            return key;
         }
 
         /// <summary>
         /// SECURE CONNECTION SETUP - Enable modern encryption
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Ensures all connections to ChatGPT use the latest security protocols
         /// Like making sure your browser uses HTTPS instead of unsecure HTTP
@@ -2947,11 +3035,11 @@ namespace CAINE
 
         /// <summary>
         /// CHATGPT COMMUNICATION - Send questions to OpenAI and get responses
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes a conversation (array of messages) and sends it to ChatGPT's API
         /// Like having a phone conversation with an expert, but through code
-        /// 
+        ///
         /// HANDLES:
         /// - Authentication (proving we're allowed to use the API)
         /// - Request formatting (packaging the conversation properly)
@@ -2994,15 +3082,15 @@ namespace CAINE
 
         /// <summary>
         /// AI EMBEDDINGS - Create AI fingerprints for similarity matching
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Converts text into numerical vectors (arrays of numbers) that represent meaning
         /// Like converting words into a mathematical language that AI can understand
-        /// 
+        ///
         /// EXAMPLE:
-        /// "Database connection failed" and "Cannot connect to SQL server" 
+        /// "Database connection failed" and "Cannot connect to SQL server"
         /// would produce similar number patterns even though the words are different
-        /// 
+        ///
         /// ENABLES SMART SIMILARITY MATCHING:
         /// CAINE can find solutions to similar problems even if the exact words differ
         /// </summary>
@@ -3039,17 +3127,17 @@ namespace CAINE
 
         /// <summary>
         /// CONTEXT BUILDING - Prepare conversation history for ChatGPT
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Before asking ChatGPT for help, this builds a conversation that includes:
         /// - Similar errors CAINE has solved before
         /// - Which solutions worked well (high success rates)
         /// - Context about the current problem
-        /// 
+        ///
         /// LIKE BRIEFING AN EXPERT:
         /// - "Here are 6 similar problems we've solved successfully..."
         /// - "Now help me with this new problem that seems related..."
-        /// 
+        ///
         /// This makes ChatGPT's advice much more relevant and actionable
         /// </summary>
         private async Task<object[]> BuildEnhancedChatHistoryAsync(string incomingErrorMessage)
@@ -3068,7 +3156,7 @@ namespace CAINE
                        COALESCE(fb.success_rate, 0.5) as success_rate
                 FROM {TableKB} kb
                 LEFT JOIN (
-                    SELECT solution_hash, 
+                    SELECT solution_hash,
                            AVG(CASE WHEN was_helpful THEN 1.0 ELSE 0.0 END) as success_rate
                     FROM {TableFeedback}
                     GROUP BY solution_hash
@@ -3134,11 +3222,11 @@ namespace CAINE
 
         /// <summary>
         /// TEXT PARSING - Extract numbered steps from AI responses
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes ChatGPT's response (which might be formatted text) and extracts
         /// clean, numbered steps that can be saved to the knowledge base
-        /// 
+        ///
         /// LIKE A TEXT PROCESSOR:
         /// Finds lines that start with "1.", "2.", "- " etc. and extracts them
         /// Prepares the steps in a clean format for teaching CAINE
@@ -3157,11 +3245,11 @@ namespace CAINE
 
         /// <summary>
         /// CONFLICT DETECTION - Check if we already have different solutions for this error
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Before adding a new solution, checks if we already have a different solution
         /// for the same error and how well that existing solution has performed
-        /// 
+        ///
         /// PREVENTS KNOWLEDGE BASE CONFLICTS:
         /// - Warns users if they're adding a solution that contradicts existing ones
         /// - Helps identify when there might be multiple valid approaches
@@ -3204,14 +3292,14 @@ namespace CAINE
 
         /// <summary>
         /// ENHANCED TEACHING - Save new knowledge with version control
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes a new error/solution pair and stores it in CAINE's knowledge base
         /// with full version control and conflict tracking
-        /// 
+        ///
         /// LIKE ADDING TO A SMART ENCYCLOPEDIA:
         /// - Creates a new entry with unique fingerprint
-        /// - Stores AI embeddings for future similarity matching  
+        /// - Stores AI embeddings for future similarity matching
         /// - Records metadata about who added it and when
         /// - Handles conflicts with existing solutions gracefully
         /// - Sets up tracking for future feedback and learning
@@ -3267,7 +3355,7 @@ namespace CAINE
                                      NULL AS root_cause,
                                      NULL AS verification,
                                      array() AS links,
-                                     NULL AS code_before, NULL AS code_after, 
+                                     NULL AS code_before, NULL AS code_after,
                                      'Enhanced teaching with conflict detection' AS notes,
                                      {embSql} AS embedding                  -- AI fingerprint for similarity
                                    ) s
@@ -3313,21 +3401,21 @@ namespace CAINE
 
         /// <summary>
         /// ERROR NORMALIZATION - Standardize error messages for consistent matching
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes a raw error message and converts it into a standardized format
         /// so that similar errors get treated as the same thing
-        /// 
+        ///
         /// LIKE TRANSLATION AND STANDARDIZATION:
         /// - Removes specific details (GUIDs, file paths, user names)
         /// - Replaces them with generic placeholders
         /// - Converts everything to lowercase
         /// - Removes punctuation and extra spaces
-        /// 
+        ///
         /// EXAMPLES:
         /// "Login failed for user 'john.doe'" → "login failed for user <user>"
         /// "C:\MyApp\Config.xml not found" → "<path> not found"
-        /// 
+        ///
         /// This ensures that the same type of error always gets the same fingerprint
         /// </summary>
         private static string Normalize(string s)
@@ -3354,11 +3442,11 @@ namespace CAINE
 
         /// <summary>
         /// HASH GENERATION - Create unique fingerprints for errors
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes any text and creates a unique, fixed-length identifier (hash)
         /// Like creating a barcode - same input always produces same hash
-        /// 
+        ///
         /// USES SHA256 ENCRYPTION:
         /// - Industry-standard hashing algorithm
         /// - Same error always gets same hash
@@ -3378,7 +3466,7 @@ namespace CAINE
 
         /// <summary>
         /// DATABASE CONNECTION - Open secure connection to CAINE's knowledge base
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Creates a connection to the Databricks database where CAINE stores all its knowledge
         /// Like opening a secure line to the library's catalog system
@@ -3392,17 +3480,17 @@ namespace CAINE
 
         /// <summary>
         /// KEYWORD EXTRACTION - Find important words for searching
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes a normalized error message and extracts the most important keywords
         /// while filtering out common words that don't help identify the problem
-        /// 
+        ///
         /// LIKE A SMART HIGHLIGHTER:
         /// - Finds words that are 4+ characters (meaningful terms)
         /// - Removes common words like "error", "failed", "the", "and"
         /// - Limits to top 4 most important terms
         /// - Returns words that uniquely identify this type of error
-        /// 
+        ///
         /// Used for keyword-based searching when exact matches aren't found
         /// </summary>
         private static string[] Tokens(string sig)
@@ -3418,11 +3506,11 @@ namespace CAINE
 
         /// <summary>
         /// ARRAY PARSING - Convert database array strings back to float arrays
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Database stores AI embeddings as text strings like "array(0.1,0.2,0.3)"
         /// This converts them back into usable float arrays for similarity calculations
-        /// 
+        ///
         /// LIKE A FORMAT CONVERTER:
         /// Translates between database storage format and C# array format
         /// Handles various formats that might be stored in different database systems
@@ -3451,16 +3539,16 @@ namespace CAINE
 
         /// <summary>
         /// VECTOR NORMALIZATION - Prepare AI embeddings for similarity comparison
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Takes an AI embedding (array of numbers) and normalizes it so that
         /// similarity calculations work properly
-        /// 
+        ///
         /// LIKE STANDARDIZING UNITS:
         /// - Converts vectors to unit length (magnitude = 1)
         /// - Enables accurate cosine similarity calculations
         /// - Required for proper AI similarity matching
-        /// 
+        ///
         /// MATHEMATICAL PROCESS:
         /// Divides each number by the vector's overall magnitude
         /// </summary>
@@ -3481,16 +3569,16 @@ namespace CAINE
 
         /// <summary>
         /// COSINE SIMILARITY - Calculate how similar two AI embeddings are
-        /// 
+        ///
         /// WHAT THIS DOES:
         /// Compares two AI fingerprints and returns a similarity score from -1 to 1
         /// where 1 = identical meaning, 0 = unrelated, -1 = opposite meaning
-        /// 
+        ///
         /// LIKE COMPARING FINGERPRINTS:
         /// - Takes two AI embeddings (arrays of numbers representing meaning)
         /// - Calculates the angle between them in high-dimensional space
         /// - Returns how similar they are as a percentage
-        /// 
+        ///
         /// USED FOR INTELLIGENT MATCHING:
         /// Helps CAINE find solutions for errors that mean the same thing
         /// even if they use different words
@@ -3511,7 +3599,7 @@ namespace CAINE
     }
     /// <summary>
     /// ML INTEGRATION FOR CAINE - Connects traditional ML to existing system
-    /// 
+    ///
     /// WHAT THIS DOES:
     /// - Bridges the ML engine with CAINE's existing search and feedback systems
     /// - Enhances decision-making with predictive models
@@ -3825,7 +3913,7 @@ namespace CAINE
                     {
                         // Fixed query - removed non-existent column
                         var sql = $@"
-                    SELECT 
+                    SELECT
                         kb.error_text,
                         kb.error_hash,
                         kb.error_signature,

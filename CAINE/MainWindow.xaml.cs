@@ -147,19 +147,56 @@ namespace CAINE
         /// - How many people have tried it and whether it worked
         /// - Whether there are conflicting opinions about it
         /// </summary>
-  // [NESTED: SolutionResult & ML classes]
         public class SolutionResult
         {
-            public string Steps { get; set; }          // The actual solution instructions
+            // The actual fix/solution written as text (might be one paragraph or numbered steps)
+            // Example: "1. Restart the service\n2. Clear the cache\n3. Try again"
+            public string Steps { get; set; }
+
+            // Takes the solution text and breaks it into a list of individual steps
+            // Example: Converts "1. Do this\n2. Do that" into ["1. Do this", "2. Do that"]
+            // This makes it easier to display steps one at a time in the UI
             public List<string> GetParsedSteps() => SolutionParser.ParseIntoSteps(Steps);
-            public string Hash { get; set; }           // Unique fingerprint for this solution
-            public string Source { get; set; }         // Where it came from (exact match, AI, pattern, etc.)
-            public double Confidence { get; set; }     // How confident CAINE is (0-100%)
-            public int FeedbackCount { get; set; }     // How many people have rated this solution
-            public double SuccessRate { get; set; }    // Percentage of people who said it worked
-            public bool HasConflicts { get; set; }     // Whether people disagree about this solution
-            public DateTime LastUpdated { get; set; }  // When this was last modified
-            public string Version { get; set; }        // Version number for tracking changes
+
+            // A unique ID for this solution (like a barcode) - same error always gets same hash
+            // Example: "a3f5b2c1d4e6..." - used to quickly find this exact solution again
+            public string Hash { get; set; }
+
+            // Tells you which search method found this solution
+            // Example: "exact_match" means we found this exact error before
+            // Example: "fuzzy_search" means we found something similar but not exact
+            // Example: "openai_enhanced" means ChatGPT helped create this solution
+            public string Source { get; set; }
+
+            // How sure CAINE is that this solution will work (0.0 = not confident, 1.0 = very confident)
+            // Example: 0.85 means 85% confident this will solve your problem
+            // Gets higher as more people say "thumbs up" that it worked
+            public double Confidence { get; set; }
+
+            // The number of users who have given feedback (thumbs up or down) on this solution
+            // Example: 47 means 47 people have tried this and rated it
+            // More feedback = more reliable the SuccessRate is
+            public int FeedbackCount { get; set; }
+
+            // What percentage of users said this solution actually fixed their problem
+            // Example: 0.92 means 92% of people who tried it said it worked
+            // Calculated from thumbs up vs thumbs down feedback
+            public double SuccessRate { get; set; }
+
+            // True if some users love this solution but others hate it (mixed reviews)
+            // Example: true means 30% say it's great, 70% say it doesn't work
+            // Warns you that this solution might not work for everyone
+            public bool HasConflicts { get; set; }
+
+            // The date and time when this solution was last edited or updated
+            // Example: "2024-03-15 14:30:00" - helps track if solution is current
+            // Old solutions might be outdated if software has changed
+            public DateTime LastUpdated { get; set; }
+
+            // Which version of this solution you're looking at (like "v1.2" or "2.0")
+            // Example: "1.0" is original, "2.0" means someone improved it
+            // Helps track changes and improvements over time
+            public string Version { get; set; }
         }
 
         /// <summary>
@@ -184,12 +221,21 @@ namespace CAINE
             this.Loaded += async (sender, e) => await MainWindow_LoadedAsync();
         }
 
+        /// <summary>
+        /// WINDOW LOADED - Runs automatically when the application window finishes loading
+        /// 
+        /// WHAT THIS DOES:
+        /// Like a car's startup sequence - turns on all the smart features after the main window appears
+        /// This runs AFTER the window is visible so users see something while heavy initialization happens
+        /// </summary>
         private async Task MainWindow_LoadedAsync()
         {
-            // Existing ML initialization
+            // Start up the machine learning brain (neural networks, prediction models, etc.)
+            // This teaches CAINE to recognize patterns and predict which solutions will work
             await InitializeMLComponentsAsync();
 
-            // ADD THIS LINE:
+            // Start up the advanced similarity search system (finds similar errors even with different words)
+            // This is like Google's "did you mean?" but for error messages
             await InitializeAdvancedVectorSearchAsync();
         }
         /// <summary>
@@ -747,23 +793,44 @@ namespace CAINE
                 return null;
             }
         }
+        /// <summary>
+        /// INITIALIZE ADVANCED VECTOR SEARCH - Sets up AI-powered similarity matching
+        /// 
+        /// WHAT THIS DOES:
+        /// Creates a smart search system that can find similar errors even when the words are different
+        /// Like how Google knows "car won't start" and "vehicle failing to turn on" mean the same thing
+        /// 
+        /// USES AI EMBEDDINGS:
+        /// Converts error messages into mathematical fingerprints that capture meaning, not just words
+        /// Caches results to make repeated searches lightning fast
+        /// </summary>
         private async Task InitializeAdvancedVectorSearchAsync()
         {
             try
             {
-                // Initialize vector search components
+                // Create the search engine that finds similar errors using AI
+                // Like having a librarian who understands what you mean, not just what you say
                 vectorSearchEngine = new ScalableVectorManager.OptimizedVectorSearch();
+
+                // Create the cache manager that remembers recent searches
+                // Like browser cache - if you search the same thing twice, second time is instant
                 vectorCacheManager = new ScalableVectorManager.VectorCacheManager();
 
-                // Initialize cache tables
+                // Create database tables to store the search cache
+                // Like creating filing cabinets to store frequently accessed information
                 await vectorCacheManager.InitializeCacheTable();
 
+                // Log that everything started successfully (for debugging)
                 System.Diagnostics.Debug.WriteLine("Advanced vector search initialized successfully");
             }
             catch (Exception ex)
             {
+                // If AI search fails to start, log the error but don't crash
+                // The app will still work, just without the fancy similarity matching
                 System.Diagnostics.Debug.WriteLine($"Advanced vector search initialization failed: {ex.Message}");
-                // Continue without advanced vector search - fallback to basic method
+
+                // Continue without advanced vector search - fallback to basic keyword matching
+                // Like when GPS fails, you can still use a paper map
             }
         }
 
@@ -896,8 +963,18 @@ namespace CAINE
                 // Sample size adjustment
                 var sampleConfidence = feedbackCount == 0 ? 1.0 : Math.Min(1.0, feedbackCount / (double)MinFeedbackForHighConfidence);
 
-                // Conflict penalty
-                var conflictPenalty = Math.Max(0.0, 1.0 - conflictRate * 2);
+                // ACTUALLY USE ConflictThreshold: Apply stronger penalty if conflicts exceed threshold
+                var conflictPenalty = 1.0;
+                if (conflictRate > ConflictThreshold)
+                {
+                    // Conflicts are significant - apply exponential penalty
+                    conflictPenalty = Math.Max(0.0, 1.0 - (conflictRate - ConflictThreshold) * 3);
+                }
+                else
+                {
+                    // Minor conflicts - apply linear penalty
+                    conflictPenalty = Math.Max(0.0, 1.0 - conflictRate * 2);
+                }
 
                 return successRate * sampleConfidence * conflictPenalty;
             }
@@ -925,8 +1002,42 @@ namespace CAINE
                     modified *= ageDecay;
                 }
 
+                // HIGH CONFIDENCE CAP: Use HighConfidenceThreshold to prevent overconfidence
+                // Only allow confidence above threshold if we have substantial feedback
+                if (modified > HighConfidenceThreshold)
+                {
+                    // Need at least 10 feedback entries to exceed high confidence threshold
+                    if (factors.FeedbackCount < 10)
+                    {
+                        modified = HighConfidenceThreshold; // Cap at threshold
+                    }
+                    // With lots of feedback, allow up to 0.99
+                    else
+                    {
+                        modified = Math.Min(0.99, modified);
+                    }
+                }
+
                 // ENSURE BOUNDS
                 return Math.Max(0.05, Math.Min(0.99, modified));
+            }
+
+            /// <summary>
+            /// Check if this result qualifies as "high confidence"
+            /// Useful for UI decisions like showing green checkmarks or auto-applying solutions
+            /// </summary>
+            public static bool IsHighConfidence(double confidence, int feedbackCount)
+            {
+                return confidence >= HighConfidenceThreshold && feedbackCount >= MinFeedbackForHighConfidence;
+            }
+
+            /// <summary>
+            /// Check if conflict rate indicates disagreement among users
+            /// Useful for showing warning messages in UI
+            /// </summary>
+            public static bool HasSignificantConflicts(double conflictRate)
+            {
+                return conflictRate > ConflictThreshold;
             }
         }
 
@@ -2742,23 +2853,57 @@ namespace CAINE
 
         /// <summary>
         /// ANALYTICS WINDOW - Show statistics and insights
-        ///
+        /// 
         /// WHAT THIS DOES:
-        /// Opens a separate window that shows:
-        /// - Which solutions work best
-        /// - Most common error types
-        /// - CAINE's learning progress over time
-        ///
-        /// LIKE A DASHBOARD:
-        /// Gives administrators insights into how well CAINE is performing
+        /// Opens both analytics windows side-by-side for comprehensive system monitoring
         /// </summary>
         private void BtnAnalytics_Click(object sender, RoutedEventArgs e)
         {
+            // Open the main Analytics window first
             var analyticsWindow = new AnalyticsWindow();
+            analyticsWindow.Owner = this;
+
+            // Position it on the left side of the screen
+            analyticsWindow.WindowStartupLocation = WindowStartupLocation.Manual;
+            analyticsWindow.Left = this.Left - 50; // Slightly offset from main window
+            analyticsWindow.Top = this.Top;
+            analyticsWindow.Width = 600;
+            analyticsWindow.Height = 700;
+
             analyticsWindow.Show();
 
-            // ADD THIS LINE:
-            ShowMLDashboard();
+            // Now show ML Dashboard if available
+            if (mlEngine != null)
+            {
+                try
+                {
+                    var mlDashboard = new MLDashboardWindow(mlEngine);
+                    mlDashboard.Owner = this;
+
+                    // Position it on the right side, next to the Analytics window
+                    mlDashboard.WindowStartupLocation = WindowStartupLocation.Manual;
+                    mlDashboard.Left = analyticsWindow.Left + analyticsWindow.Width + 10; // 10px gap between windows
+                    mlDashboard.Top = analyticsWindow.Top;
+                    mlDashboard.Width = 600;
+                    mlDashboard.Height = 700;
+
+                    mlDashboard.Show();
+
+                    // Bring Analytics window back to front so both are visible
+                    analyticsWindow.Activate();
+                    mlDashboard.Activate();
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Could not open ML Dashboard: {ex.Message}",
+                                   "Error", MessageBoxButton.OK, MessageBoxImage.Warning);
+                }
+            }
+            else
+            {
+                // If ML not initialized, just show a message in the result box
+                ResultBox.Text += "\n\n⚠️ ML components not initialized. Need more training data for ML Dashboard.";
+            }
         }
 
         /// <summary>
